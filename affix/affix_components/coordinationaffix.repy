@@ -1,0 +1,442 @@
+#!python
+"""
+<Program Name>
+  coordinationaffix.repy
+
+<Author>
+  Danny Y. Huang, yh1@cs.williams.edu
+  Monzur Muhammad, monzum@cs.washington.edu
+
+<Date Started>
+  March 24, 2011
+
+<Purpose>
+  Advertises the server's string representation of its affix stack. When a client
+  is about to connect to this server, the coordination affix looks up the string
+  representation and constructs the same affixs. At this point, both the server
+  and the client have the same affixs. As their affix stacks are balanced, the
+  connection is established and ready to be returned to the application.
+
+  The advertisement key for a server is "host,port,protocol", where host is the
+  hostname of the server and protocol can be either UDP or TCP. The
+  advertisement value is the string representation of the CoordinationAffix's
+  affix stack.
+
+  If a zenodotus name is provided to listenforconn, this affix will also
+  advertise the mapping of the name to the current IP address of the host. Any
+  change in the IP address will cause the mapping to be updated, but unless used
+  along with the mobility affix, the listener will not be able to accept new
+  connections because it is bound to the old IP address.
+
+  The coordination affix should always sit on top of an application's affix stack,
+  so that it can see the content of the rest of the stack.
+
+"""
+
+dy_import_module_symbols("advertise_objects")
+dy_import_module_symbols("affix_exceptions")
+
+
+# Whether we want to print debug statements.
+_COORDINATION_AFFIX_DEBUG_MODE = False
+
+
+class CoordinationAffix(BaseAffix):
+
+
+
+  # A dictionary that maps a server socket object to the corresponding
+  # advertisement handle. We need to save all the handles that are created as
+  # the listener starts, so that, when the server socket's close() is called, we
+  # can retrieve these handles and stop the advertisement.
+  _adv_handle_dict = {}
+
+  # Protects the dictionary above from concurrent modification.
+  _adv_handle_dict_lock = createlock()
+
+  # Whether we are actively advertising the zenodotus name -> IP mapping.
+  _zenodotus_advertise_active = False
+
+  # How long a zenodotus to IP mapping may remain valid (time-to-live).
+  _ZENODOTUS_NAME_TTL = 15
+
+
+  def copy(self):
+    return CoordinationAffix(self.affix_context['affix_stack'].copy(), self.affix_context['optional_args'])
+
+
+
+  def get_advertisement_string(self):
+    return '(CoordinationAffix)' + self.get_next_affix_layer().get_advertisement_string()
+
+
+
+  # ===================================================================
+  # TCP
+  # ===================================================================
+
+
+
+  def listenforconnection(self, localhost, localport):
+    """
+    <Purpose>
+      Listens for incoming connections. Advertises the affix stack when the
+      listener is ready.
+
+    <Arguments>
+      Same as the network API in repy v2.
+
+    <Side Effects>
+      See the documentation of AdvertiseObjects.
+
+    <Exceptions>
+      Same as the network API in repy v2.    
+
+    <Returns>      
+      Same as the network API in repy v2.    
+
+    """
+    # If we are listening on a zenodotus name, first translate it to the local
+    # IP and start the advertisement thread that constantly announces the
+    # zenodotus name -> IP mapping.
+    if localhost.endswith('.zenodotus.cs.washington.edu'):
+      try:
+        localip = getmyip()
+      except InternetConnectivityError:
+        raise AddressBindingError('Coordination Affix: Not connected to the network.')
+      self._zenodotus_start_advertise(localhost)
+    else:
+      localip = localhost
+
+    # Start listening so we have a complete view of the affix stack below us.
+    tcpserversocket = self.get_next_affix_layer().listenforconnection(localip, localport)
+
+    # The underlying affix stack has been built completely. We can advertise the
+    # affix stack.
+    adv_key = str(localhost) + ',' + str(localport) + ',TCP'
+    adv_value = self.get_next_affix_layer().get_advertisement_string()
+    if _COORDINATION_AFFIX_DEBUG_MODE:
+      log('CoordinationAffix: Advertised', adv_key, adv_value, '\n')
+    adv_handle = AdvertisePipe().add(adv_key, adv_value)
+
+    # We need to save the advertisement handle to a global dictionary, so that
+    # we can keep a reference to the handle. Later on, when we stop listening,
+    # we can conveniently remove this key value pair from the advertisement
+    # service by using this handle.
+    if isinstance(tcpserversocket, AffixTCPServerSocket):
+      adv_handle_key = repr(tcpserversocket._socket)
+    else:
+      adv_handle_key = repr(tcpserversocket)
+
+    self._adv_handle_dict_lock.acquire(True)
+    self._adv_handle_dict[adv_handle_key] = adv_handle
+    self._adv_handle_dict_lock.release()
+
+    return AffixTCPServerSocket(tcpserversocket, self)
+    
+    
+
+
+  def tcpserversocket_close(self, tcpserversocket):
+    """
+    Stops listening and stops advertising the server.
+
+    """
+    close_result = self.get_next_affix_layer().tcpserversocket_close(tcpserversocket)
+
+    # Now that we have closed the listener without any exceptions, we can safely
+    # stop the advertisement.
+    self._stop_advertisement(tcpserversocket)
+
+    return close_result
+
+
+
+
+  def openconnection(self, destip, destport, localip, localport, timeout):
+    """
+    <Purpose>
+      Looks up the string representation of the server's affix stack. Constructs
+      the same affix stack and connects to the server. If the server's affix stack
+      is not found or invalid, connects without using affixs for backward
+      compatibility.
+
+    <Arguments>
+      Same as the network API in repy v2.
+
+    <Side Effects>
+      See the documentation of AdvertiseObjects.
+
+    <Exceptions>
+      Same as the network API in repy v2.    
+
+    <Returns>      
+      Same as the network API in repy v2.    
+
+    """
+
+    # Keep track of how much time we have spent to avoid exceeding the timeout.
+    start_time = getruntime()
+
+    # Look up the server's affix stack under this key.
+    server_key = str(destip) + ',' + str(destport) + ',TCP'
+    lookup_result_list = LookupCache().lookup(server_key)
+
+    # Reverse the results as the latest affix advertisement always comes last.
+    lookup_result_list.reverse()
+
+    # We remember all the affixs that fail to connect, so that we can piggyback
+    # this error report along with TimeoutError.
+    failed_affix_str = ''
+
+    # Find the localhost of the node.
+    localhost = self.affix_context['affix_stack'].affix_stack_context['localhost']
+
+    # We go through all the possible affix stack strings advertised. The list
+    # will most likely contain only one value, but it is possible that a affix
+    # may advertise two different values under the same key because its affix
+    # stack had somehow changed.
+    for server_affix_stack_str in lookup_result_list:
+
+      # Build my affix stack
+      self.affix_context['affix_stack'] = AffixStack(server_affix_stack_str, localhost)
+      if _COORDINATION_AFFIX_DEBUG_MODE:
+        log('CoordinationAffix: Trying affix stack', self.get_next_affix_layer(), '\n')
+      # Check if we have exceeded the time limit.
+      time_taken = getruntime() - start_time
+      if time_taken > timeout:
+        raise TimeoutError("CoordinationAffix: We have spent too much time looking up the server's affix stack.")
+
+      # Since we spent some time contacting the advertisement service, we have
+      # less time for the actual openconn.
+      print "Using affix string: " + self.get_next_affix_layer().get_advertisement_string()
+      try:
+        sock = self.get_next_affix_layer().openconnection(destip, destport, localip, localport, timeout - time_taken)
+        return AffixSocket(sock, self.copy())
+
+      # We ignore the error here, as we may have been contacting a legacy
+      # server. Later, we're going to retry without affixs.
+      except NetworkError, err:
+        failed_affix_str += server_affix_stack_str + '[' + str(err) + ']; '
+
+    # It is possible we're contacting a legacy server that doesn't use affixs,
+    # because either it doesn't advertise itself, or none of the advertised affix
+    # stacks works. Thus, we contact it without affixs.
+    time_taken = getruntime() - start_time
+    if time_taken < timeout or not lookup_result_list:
+      empty_affix_stack = AffixStackInterface()
+      sock = empty_affix_stack.openconnection(destip, destport, localip, localport, timeout - time_taken)
+      return AffixSocket(sock, self.copy())
+
+    # Piggyback the failure information on the TimeoutError.
+    else:
+      raise TimeoutError("CoordinationAffix: Failed to connect with affixs - " + failed_affix_str)
+
+
+  # ===================================================================
+  # UDP
+  # ===================================================================
+
+
+  def listenformessage(self, localhost, localport):
+    """
+    <Purpose>
+      Listens for incoming connections. Advertises the affix stack when the
+      listener is ready.
+
+    <Arguments>
+      Same as the network API in repy v2.
+
+    <Side Effects>
+      See the documentation of AdvertiseObjects.
+
+    <Exceptions>
+      Same as the network API in repy v2.    
+
+    <Returns>      
+      Same as the network API in repy v2.    
+
+    """
+    # If we are listening on a zenodotus name, first translate it to the local
+    # IP and start the advertisement thread that constantly announces the
+    # zenodotus name -> IP mapping.
+    if localhost.endswith('.zenodotus.cs.washington.edu'):
+      try:
+        localip = getmyip()
+      except InternetConnectivityError:
+        raise AddressBindingError('Coordination Affix: Not connected to the network.')
+      self._zenodotus_start_advertise(localhost)
+    else:
+      localip = localhost
+
+    # Start listening so we have a complete view of the affix stack below us.
+    udpserversocket = self.get_next_affix_layer().listenformessage(localip, localport)
+
+    # The underlying affix stack has been built completely. We can advertise the
+    # affix stack.
+    adv_key = str(localip) + ',' + str(localport) + ',UDP'
+    adv_value = self.get_next_affix_layer().get_advertisement_string()
+    adv_handle = AdvertisePipe().add(adv_key, adv_value)
+
+    # We need to save the advertisement handle to a global dictionary, so that
+    # we can keep a reference to the handle. Later on, when we stop listening,
+    # we can conveniently remove this key value pair from the advertisement
+    # service by using this handle.
+    self._adv_handle_dict_lock.acquire(True)
+    self._adv_handle_dict[repr(udpserversocket)] = adv_handle
+    self._adv_handle_dict_lock.release()
+
+    return AffixUDPServerSocket(udpserversocket, self)
+
+
+
+  def udpserversocket_close(self, udpserversocket):
+    """
+    Stops listening and stops advertising the server.
+
+    """
+    close_result = self.get_next_affix_layer().udpserversocket_close(udpserversocket)
+
+    # Now that we have closed the listener without any exceptions, we can safely
+    # stop the advertisement.
+    self._stop_advertisement(udpserversocket)
+
+    return close_result
+
+
+
+  def sendmessage(self, destip, destport, message, localip, localport):
+    """
+    <Purpose>
+      Looks up the string representation of the server's affix stack. Constructs
+      the same affix stack and connects to the server. If the server's affix stack
+      is not found, connects without using affixs for backward compatibility.
+
+    <Arguments>
+      Same as the network API in repy v2.
+
+    <Side Effects>
+      See the documentation of AdvertiseObjects.
+
+    <Exceptions>
+      Same as the network API in repy v2.    
+
+    <Returns>      
+      Same as the network API in repy v2.    
+
+    """
+    # Key under which we look up the server's affix stack
+    server_key = str(destip) + ',' + str(destport) + ',UDP'
+
+    # Now we obtain the server's affix stack string representation from which we
+    # will construct the client's affix stack. 
+    lookup_result_list = LookupCache().lookup(server_key)
+
+    if lookup_result_list:
+
+      # We asusme that the last result in the list returned contains the most
+      # up-to-date server affix stack string. We build a new affix stack based on it.
+      server_affix_stack_str = lookup_result_list.pop()
+      localhost = self.affix_context['affix_stack'].affix_stack_context['localhost']
+      self.affix_context['affix_stack'] = AffixStack(server_affix_stack_str, localhost)
+      
+      # Send the message using the new affix stack.
+      return self.get_next_affix_layer().sendmessage(destip, destport, message, localip, localport)
+
+    else:
+
+      # It is possible we're contacting a legacy server that doesn't use
+      # affixs. Thus, we contact it without affixs.
+      return sendmessage(destip, destport, message, localip, localport)
+
+
+
+
+  def _stop_advertisement(self, serversocket):
+    """
+    Stops advertising on the supplied serversocket, which can be either a
+    UDPServerSocket or TCPServerSocket. Helper method for the close methods of
+    both sockets.
+
+    """
+    # Retrieve the advertisement handle associated with the current socket and
+    # stop the advertisement.
+    try:
+
+      self._adv_handle_dict_lock.acquire(True)
+      adv_handle = self._adv_handle_dict.pop(repr(serversocket))
+
+    # Cannot find the handle, so we must have removed it when the close() method
+    # was previously invoked. We quietly ignore the error.
+    except KeyError:
+      pass
+
+    # Stop advertising both our affix stack and the zenodotus name -> IP mapping.
+    else:
+      AdvertisePipe().remove(adv_handle)
+      self._zenodotus_advertise_active = False
+
+    finally:
+      self._adv_handle_dict_lock.release()
+
+
+
+
+  def _zenodotus_start_advertise(self, zenodotus_name):
+    """
+    Constantly advertises the zenodotus name -> IP mapping in a thread.
+
+    """
+    def _thread_function():
+
+      # Enables the thread
+      self._zenodotus_advertise_active = True
+
+      # Keeps track of the IP changes.
+      my_ip = ''
+
+      # Keeps track of when we last updated the mappings.
+      last_update_time = getruntime()
+
+      while self._zenodotus_advertise_active: 
+
+        # Also store the IP address in a global cache, so that others
+        # (particularly the mobility affix) don't have to always call getmyip().
+        # This is for efficiency. Store None in the global cache if the
+        # network is down.
+        try:
+          current_ip = getmyip()
+          mycontext['coordination_affix_getmyip_cache'] = current_ip
+        except InternetConnectivityError:
+          mycontext['coordination_affix_getmyip_cache'] = None
+          sleep(1)
+          continue
+
+        current_time = getruntime()
+
+        # Advertises the mappings when the IP has changed, or when we haven't
+        # updated the mappings for 2/3 of the TTL of the zenodotus name. Ignore
+        # all exceptions during advertisement.
+        if (current_ip != my_ip) or (current_time - last_update_time > self._ZENODOTUS_NAME_TTL * 0.67):
+
+          if _COORDINATION_AFFIX_DEBUG_MODE and current_ip != my_ip:
+            log('CoordinationAffix: IP changed from', my_ip, '->', current_ip)
+            log('for', zenodotus_name, '\n')
+
+          my_ip = current_ip
+          last_update_time = current_time
+
+          # Advertise till success.
+          while True:
+            try:
+              advertise_announce(zenodotus_name, my_ip, self._ZENODOTUS_NAME_TTL, timeout=10)
+              break
+            except:
+              sleep(1)
+
+        sleep(2)
+
+      # Clears the IP cache when the loop stops
+      del mycontext['coordination_affix_getmyip_cache']
+
+    createthread(_thread_function)

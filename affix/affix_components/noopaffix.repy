@@ -1,0 +1,14 @@
+#!python
+class NoopAffix(BaseAffix):
+  """
+  A affix that does nothing (no-operation). For debug purpose only.
+
+  """
+
+  def copy(self):
+    return NoopAffix(self.affix_context['affix_stack'].copy(), self.affix_context['optional_args'])
+
+
+  
+  def get_advertisement_string(self):
+    return '(NoopAffix)' + self.get_next_affix_layer().get_advertisement_string()

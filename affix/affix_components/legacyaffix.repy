@@ -1,0 +1,160 @@
+#!python
+"""
+<Purpose>
+  The Legacy Affix is used for allowing a legacy client to connect
+  to a affix enabled server. The Legacy Affix opens up two tcpserversocket
+  when listenforconnection is called in order for both affix enabled client
+  and legacy clients to connect to the server.
+"""
+
+class LegacyAffixTCPServerSocket():
+  """
+  This is a wrapper TCPServerSocket for the legacy affix.
+  """
+
+  def __init__(self, tcpserversocket_dict, affix_object):
+    self.tcpserversocket_dict = tcpserversocket_dict
+    self.affix_object = affix_object
+
+  def getconnection(self):
+    """
+    <Purpose>
+      We call getconnection first on the affix_tcpsocket, and if
+      that fails we call getconnection for the repy_tcpsocket.
+    
+    <Side Effect>
+      The affix tcpserversocket always gets called first, so clients
+      that are affix enabled will get serviced first.
+      MMM: Should we alternate between the two?
+    """
+    # If we were able to create the affix_tcpsocket, then we attempt to call
+    # getconnection() on the affix tcp server socket first. If we were unable 
+    # to create it or get a SocketWouldBlockError, we default to the basic
+    # repy getconnection() call. The reason for this is to ensure that even
+    # if the affixstack breaks down, we are able to revert to the default repy
+    # connection.
+    if self.tcpserversocket_dict['affix_tcpsocket']:
+      try:
+        rip, rport, sockobj = self.tcpserversocket_dict['affix_tcpsocket'].getconnection()
+        return (rip, rport, AffixSocket(sockobj, self.affix_object)) 
+      except SocketWouldBlockError:
+        pass
+
+    return self.tcpserversocket_dict['repy_tcpsocket'].getconnection()
+
+
+  def close(self):
+    self.tcpserversocket_dict['affix_tcpsocket'].close()
+    return self.tcpserversocket_dict['repy_tcpsocket'].close()
+
+
+
+
+
+class LegacyAffix(BaseAffix):
+  """
+  A affix that does nothing (no-operation). For debug purpose only.
+
+  """
+
+  def __init__(self, affix_stack=AffixStack(), optional_args=None):
+    """
+    <Purpose>
+      Initialize the LegacyAffix with the appropriate affix stack 
+      underneath it.
+
+    <Arguments>
+      affix_stack - the affix stack that will be initially beneath
+          us. If optional_args is provided then it will be used
+          to create the affix stacks that will be used, but this
+          will be the default affix stack.
+
+      optional_args - If any optional args is provided, then it will
+          be used to create affix stacks.
+          
+    <Side Effects>
+      Two tcpserversocket or two udpserversockets are created for 
+      each call.
+      
+    <Exceptions>
+      AffixArgumentError will be raised if the arguments provided
+      is of not the right form or are incorrect.
+
+      Assertion error if optional args is not type of list.
+
+    <Return>
+      None
+    """
+
+    if optional_args:
+      assert(isinstance(optional_args, list)), "Bad optional args. Optional arg must be a list."
+      assert(len(optional_args) == 2), "Bad optional args. Must provide tcp/udp port numbers for the legacy affix to listen on."
+
+      try:
+        self.tcp_listenport = int(optional_args[0])
+        self.udp_listenport = int(optional_args[1])
+      except ValueError:
+        raise AffixInternalError("TCP or UDP listenport provided is not of type int.")
+
+
+    BaseAffix.__init__(self, affix_stack, optional_args)
+
+
+
+
+  # ====================== TCP Connection ===========================
+  def listenforconnection(self, localip, localport):
+    """
+    <Purpose>
+      The purpose of this call is to open up two different tcp
+      server socket. One of the server socket will be affix enabled
+      and will call listenforconnection for the next affix on the stack
+      while the other server socket will be a pure repy server socket.
+
+    <Exception>
+      The Repy API exceptions will be raised in case of failure. List
+      of exceptions can be found here: https://seattle.cs.washington.edu/wiki/FutureRepyAPI
+     
+    <Return>
+      The call will return a LegacyAffixTCPServerSocket object.
+    """
+    tcpserversocket_dict = {}
+
+    tcpserversocket_dict['affix_tcpsocket'] = self.get_next_affix_layer().listenforconnection(localip, self.tcp_listenport)
+    tcpserversocket_dict['repy_tcpsocket'] = listenforconnection(localip, localport)
+
+    return LegacyAffixTCPServerSocket(tcpserversocket_dict, self)
+
+
+
+
+  def openconnection(self, destip, destport, localip, localport, timeout):
+    """
+    <Purpose>
+      The purpose of this openconnection call is to first try and connect
+      to the affix stack of the server. If that fails, it will default to
+      the repy openforconnection call.
+
+    <Exception>
+      The default Repy exceptions are raised. The list of exceptioncs can
+      be found here: https://seattle.cs.washington.edu/wiki/FutureRepyAPI
+    """
+
+    # First try to open a connection using our affix stack. If we get a ConnectionRefusedError
+    # or a DuplicateTupleError, then we default to the repy openconnection.
+    try:
+      return AffixSocket(self.get_next_affix_layer().openconnection(destip, self.tcp_listenport, localip, localport, timeout), self)
+    except (DuplicateTupleError, ConnectionRefusedError):
+      pass
+    return openconnection(destip, destport, localip, localport, timeout)
+      
+
+
+
+  def copy(self):
+    return LegacyAffix(self.affix_context['affix_stack'].copy(), self.affix_context['optional_args'])
+
+
+  
+  def get_advertisement_string(self):
+    return '(LegacyAffix,%d,%d)' % (self.tcp_listenport, self.udp_listenport) + self.get_next_affix_layer().get_advertisement_string()

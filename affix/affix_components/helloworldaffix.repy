@@ -1,0 +1,110 @@
+"""
+<Purpose>
+  This is a Hello World Affix. It is an example affix 
+  that can be used as an example on creating affixs.
+  This affix just modifies the socket.send() and
+  socket.recv() methods. 
+
+<Author>
+  Monzur Muhammad
+  monzum@cs.washington.edu
+
+<Date Started>
+  March 30th, 2011
+"""
+
+# Import base affix.
+
+					
+class HelloWorldAffix(BaseAffix):
+
+  def __init__(self, affix_stack=AffixStack(), optional_args=None):
+    """
+    <Purpose>
+      Initialize the Hello World Affix. Calls on the init 
+      function of the base affix.
+    
+    <Arguments>
+      affix_stack - A affix stack that will be used as the stack
+          beneath us. By default an empty affix stack is created.
+
+      optional_args - Any optional args that this affix or any of
+          the affixs below us might use.
+
+    <Side Effects>
+      None
+
+    <Exceptions>
+      None
+    """
+    self.recv_buffer = ""
+
+    if optional_args:
+      self.private_num = optional_args[0]
+    else:
+      self.private_num = None
+
+    BaseAffix.__init__(self, affix_stack, optional_args)
+
+
+
+
+
+  def socket_send(self, socket, msg):
+    """
+    <Purpose>
+      Adds in a little hello world send to the message that
+      we send in this layer.
+    """
+    
+    if self.private_num:
+      msg = "HelloWorldSendTAG:::%s@" % self.private_num + msg 
+    else:
+      msg = "HelloWorldSendTAG@" + msg
+    next_layer = self.get_next_affix_layer()
+
+    return next_layer.socket_send(socket, msg)
+
+
+
+  def socket_recv(self, socket, bytes):
+    """
+    Calls the next layer of socket.recv()
+    """
+    # Increase the length by the expected added message
+    bytes = bytes + len("HelloWorldSendTAG@")
+
+    if len(self.recv_buffer) < bytes:
+      self.recv_buffer += self.get_next_affix_layer().socket_recv(socket, bytes)
+
+
+    # The receive also tags on a little message.
+    if self.private_num:
+      return_msg = "HelloWorldRecvTAG:::%s@" % self.private_num + self.recv_buffer[:bytes]
+    else:
+      return_msg = "HelloWorldRecvTAG@" + self.recv_buffer[:bytes]
+
+    self.recv_buffer = self.recv_buffer[bytes:]
+
+    return return_msg
+    
+
+  def copy(self):
+    """
+    Make a deepcopy of self.
+    """
+    affix_stack_copy = self.affix_context['affix_stack'].copy()
+    optional_args_copy = self.affix_context['optional_args']
+
+    my_copy = HelloWorldAffix(affix_stack_copy, optional_args_copy)
+    return my_copy
+
+
+
+  def get_advertisement_string(self):
+    """ Advertises the affix's name and its private number, if any., so that the HelloWorldAffix on the client gets the same information. """
+    if self.private_num:
+      affix_name = '(HelloWorldAffix,' + str(self.private_num) + ')'
+    else:
+      affix_name = '(HelloWorldAffix)'
+    return affix_name + self.get_next_affix_layer().get_advertisement_string()

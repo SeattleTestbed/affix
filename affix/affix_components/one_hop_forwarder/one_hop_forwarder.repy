@@ -1,0 +1,399 @@
+#!/bin/python
+"""
+<Program Name>
+  one_hop_forwarder.repy
+
+<Purpose>
+  The purpose of this program is to act as a forwarder.
+  Messages from nodeA to nodeB could be forwarded through
+  this forwarder.
+
+<Started>
+  6th August, 2011
+
+<Author>
+  Monzur Muhammad
+  monzum@cs.washington.edu
+
+<Usage>
+  python repy.py RESTRICTION_FILE one_hop_forwarder.repy TCP_PORT UDP_PORT
+"""
+
+dy_import_module_symbols("random.repy")
+dy_import_module_symbols("session.repy")
+dy_import_module_symbols("advertise_objects")
+dy_import_module_symbols("one_hop_detour_common.repy")
+
+
+# How many bytes should be received at once.
+RECV_BYTES = 2**10 
+CONN_TIMEOUT = 10
+
+# Message log types
+INFO_MSG = 1
+ERR_MSG = 2
+DEBUG_MSG = 3
+
+# ====================================================
+# TCP Portion of the one hop forwarder
+# ====================================================
+def tcp_forwarder_listener():
+
+  logmsg("Started TCP Forwarder listener on '%s' on port '%d'." % 
+         (getmyip(), mycontext['listenport_tcp']), INFO_MSG)
+
+  # Create a TCP server socket.
+  tcp_forwarder_sock = listenforconnection(getmyip(), mycontext['listenport_tcp'])
+  
+  while True:
+    try:
+      # Try to see if there is any connection waiting.
+      remote_ip, remote_port, sockobj = tcp_forwarder_sock.getconnection()
+    except SocketWouldBlockError:
+      sleep(SLEEP_TIME)
+    except Exception, err:
+      logmsg("Error in getconnection: " + str(err), DEBUG_MSG)
+    else:
+      # Lanuch a new thread to deal with the new connection.
+      createthread(connect_tcp_forwarder(remote_ip, remote_port, sockobj))
+	  
+	  
+
+
+def connect_tcp_forwarder(remote_ip, remote_port, sockobj):
+
+  def _tcp_forwarder_helper():
+    """
+    <Purpose>
+      Setup the connection between the two nodes that are trying
+      to communicate through this forwarder.
+	 
+    <Arguments>
+      remote_ip - The ip address of the node that made the initial connection.
+      remote_port - The port number of the node that made the initial connection.
+	   
+    <Exception>
+      None.
+	 
+    <Side Effects>
+      None.
+	   
+    <Return>
+      None.
+    """
+    logmsg("Incoming TCP connection request from '%s:%d'" % (remote_ip, remote_port), INFO_MSG)
+    
+    # The node that made the initial connection will send info on the node
+    # that it wants to contact. The node will send the IP address and the 
+    # port in the form: 'CONNECT_TAG:IP,PORT'
+    node_msg = session_recvmessage(sockobj)
+	 
+    if node_msg.startswith(CONNECT_TAG):
+      try: 
+        node_info = node_msg.split(':')[1]
+        out_ip, out_port_str = node_info.split(',')
+        out_port = int(out_port_str)
+      except ValueError, err:
+        logmsg("Invalid node info sent, " + str(err), ERR_MSG)     
+    else:
+      logmsg("Initial TCP message does not include CONNECT_TAG", ERR_MSG)
+      session_sendmessage(sockobj, CONNECT_FAIL)
+      return
+
+    
+    # Find an available port, and use it as the localport.
+    try:
+      localport = get_available_port('tcp')
+    except Exception, err:
+      logmsg("Unable to make outgoing connection to '%s:%d'. Request from '%s:%d'. Err: %s" %
+             (out_ip, out_port, remote_ip, remote_port, str(err)), ERR_MSG)
+      session_sendmessage(sockobj, CONNECT_FAIL)
+      return
+
+    # Create an outgoing connection to the requested node by the incoming connection.
+    try:
+      out_sockobj = openconnection(out_ip, out_port, getmyip(), localport, CONN_TIMEOUT) 
+    except (RepyArgumentError, AddressBindingError, ResourceForbiddenError, 
+            DuplicateTupleError, AlreadyListeningError, CleanupInProgressError,
+            ConnectionRefusedError, TimeoutError, InternetConnectivityError):
+      # If we are unable to connect to the outgoing node. We notifiy the incoming node
+      # That we were unable to connect.
+      logmsg("Unable to make outgoing connection to '%s:%d'. Request from '%s:%d'" %
+             (out_ip, out_port, remote_ip, remote_port), ERR_MSG)
+      session_sendmessage(sockobj, CONNECT_FAIL)
+    else:
+      # If we have successfully connected to the outgoing node. We return a success
+      # message to the incoming node and launch two threads that forward all the 
+      # messages between the two nodes.	  
+      try:
+        createthread(forward_tcp_message(sockobj, out_sockobj))
+        createthread(forward_tcp_message(out_sockobj, sockobj))
+      except (RepyArgumentError, ResourceExhaustedError), err:
+        logmsg("Unable to launch thread 'forward_tcp_message'", ERR_MSG)
+        session_sendmessage(sockobj, CONNECT_FAIL)
+        session_sendmessage(out_sockobj, CONNECT_FAIL)
+      else:
+        # Once the connection has been made, send a CONNECT_SUCCESS to both the
+        # client and the server. Furthermore forward the client remoteip and port
+        # to the server.
+        session_sendmessage(sockobj, CONNECT_SUCCESS)
+        session_sendmessage(out_sockobj, "%s,%s:%d" % (CONNECT_SUCCESS, remote_ip, remote_port))
+        logmsg("Forwarding TCP messages between '%s:%d' and '%s:%d'" %
+               (out_ip, out_port, remote_ip, remote_port), INFO_MSG)
+
+  return _tcp_forwarder_helper
+
+
+	
+
+	
+def forward_tcp_message(from_sock, to_sock):
+  
+  def _forward_tcp_message_helper():
+    """
+    <Purpose>
+      The function forwards all the incoming messages from one
+      socket to another.
+	
+    <Arguments>
+      from_sock - The socket to listen on.
+      to_sock - The socket to forward to.
+	
+    <Side Effects>
+      None
+
+    <Exceptions>	
+      None
+
+    <Return>
+      None
+    """
+
+    while True:
+      try:
+        # Receive the incoming message, then forward the entire message
+        # to the to_sock.
+        data_recv = from_sock.recv(RECV_BYTES)
+
+        # Send all the data.
+        while data_recv:
+          try:
+            data_sent = to_sock.send(data_recv)
+            data_recv = data_recv[data_sent:]
+          except SocketWouldBlockError:
+            sleep(SLEEP_TIME)
+      except SocketWouldBlockError:
+        sleep(SLEEP_TIME)
+      except (SocketClosedLocal, SocketClosedRemote):
+        # If any of the socket is closed then we break out of the loop.
+        break
+      except Exception, err:
+        logmsg("Error in forwarding TCP message. " + str(err), DEBUG_MSG)
+	  
+    # Since we are done sending the data, we clean up the sockets. Note
+    # that we should only be here if one of the socket has already been
+    # closed.  
+    try:
+      from_sock.close()
+      to_sock.close()
+    except:
+      pass
+
+  # Return the helper function.	  
+  return _forward_tcp_message_helper 	  
+
+
+	
+
+	
+# ====================================================
+# UDP Portion of the One Hop Forwarder
+# ==================================================== 
+def udp_forwarder_listener():
+  """
+  <Purpose>
+    Open up an UDPServerSocket and forward all the messages
+    received on that socket.
+
+  <Arguments>
+    None
+
+  <Side Effects>
+    None
+
+  <Exceptions>
+    None
+
+  <Return>
+    None
+  """
+
+  logmsg("Started UDP Forwarder listener on '%s' port '%d'." % 
+         (getmyip(), mycontext['listenport_udp']), INFO_MSG)
+
+  # Open up an UDP listener.
+  udpsock = listenformessage(getmyip(), mycontext['listenport_udp'])
+
+  while True:
+    try:
+      (remoteip, remoteport, msg) = udpsock.getmessage()
+    except SocketWouldBlockError:
+      sleep(SLEEP_TIME)
+    else:
+      createthread(forward_udpmessage(remoteip, remoteport, msg))
+	
+
+
+
+def forward_udpmessage(remoteip, remoteport, msg):
+
+  def _forward_udpmessage_helper():
+    """
+    <Purpose>
+      Dissect the udp msg datagram, create a new one and forward it.
+
+    <Arguments>
+      remoteip - ip address of the node that sent the message.
+      remoteport - port of the node that sent the message.
+      msg - the message that was sent to be forwarded.
+
+    <Side Effects>
+      None
+
+    <Exceptions>
+      None
+
+    <Return>
+      None
+    """
+
+    if not msg.startswith(CONNECT_UDP):
+      logmsg("Inaccurate UDP datagram received from '%s:%d'" % (remoteip, remoteport), ERR_MSG)
+      return
+
+    # Extract all the info out of the UDP datagram.
+    try:
+      (conn_tag, node_info, actual_msg) = msg.split(':', 2)
+    except ValueError:
+      logmsg("Unable to split UDP datagram from '%s:%d'" % (remoteip, remoteport), ERR_MSG)
+      return
+
+    (node_ip, node_port_str) = node_info.split(',')
+    node_port = int(node_port_str)
+
+    # Create the node_info for the remote node that sent the message.
+    remote_node_info = remoteip + ',' + str(remoteport)
+
+    # Create the new UDP datagram.
+    new_msg = conn_tag + ':' + remote_node_info + ':' + actual_msg
+
+    # Keep trying to send the UDP message if we have a problem 
+    # with the port we chose. Otherwise we break out of the loop
+    # either with a successful sendmessage or unsuccessful.
+    while True:
+      try:
+        # Find available udp port.
+        if not mycontext['udp_localport']:
+          mycontext['udp_localport'] = get_available_port('udp')
+
+        sendmessage(node_ip, node_port, new_msg, getmyip(), mycontext['udp_localport'])
+      except (AlreadyListeningError, DuplicateTupleError), err:
+        logmsg("Unable to forward msg from '%s:%d' to '%s:%d' " % 
+               (remoteip, remoteport, node_ip, node_port) +
+               "due to the localip:localport address being already used." +
+               " Retrying with new port.", ERR_MSG)
+        continue
+      except Exception, err:
+        logmsg("Unable to forward msg from '%s:%d' to '%s:%d' " %
+               (remoteip, remoteport, node_ip, node_port) + str(err), ERR_MSG)
+        break
+      else:
+        logmsg("Forwarded UDP message from '%s:%d' to '%s:%d' " %
+               (remoteip, remoteport, node_ip, node_port), INFO_MSG)
+        break
+
+
+  return _forward_udpmessage_helper
+
+
+
+	
+# ====================================================
+# Common
+# ====================================================
+def get_available_port(conn_type):
+  """
+  Find a free port that is available and return it.
+  """
+  
+  resource_type = ''
+
+  if conn_type == 'tcp':
+    resource_type = 'connport'
+  elif conn_type == 'udp':
+    resource_type = 'messport'
+  else:
+    raise Exception("Conn type must be udp or tcp")
+
+  # We look up the allowed ports and which ports are already being used.
+  # Then we pick an available port and return it.
+  (resource_list_limit, resource_list_usage, stoptimes) = getresources()
+  available_ports = list(resource_list_limit[resource_type] - resource_list_usage[resource_type])
+
+  # Choose a random port out of the available ports.
+  rand_index = int(randomfloat() * (len(available_ports)-1))
+
+  if rand_index < 0:
+    raise Exception("No localports available")
+
+  try:
+    port = int(available_ports[rand_index])
+  except:
+    log("index is: " + str(rand_index) + " Available_ports: " + str(available_ports))
+    raise
+
+  return port
+
+
+
+
+def advertise_one_hop_forwarder():
+  pass
+
+
+def logmsg(message, msg_type):
+
+  header = "[%.4f] " % getruntime()
+  
+  if msg_type == INFO_MSG:
+    header += "INFO: "
+  elif msg_type == ERR_MSG:
+    header += "ERROR: "
+  elif msg_type == DEBUG_MSG:
+    header += "DEBUG: "
+
+  log(header + message + '\n')	
+
+
+# ====================================================
+# Program Entry
+# ====================================================
+if callfunc == 'initialize':
+
+  if len(callargs) < 2:
+    raise Exception("Usage:\n\tpython repy.py RESTRICTION_FILE one_hop_forwarder.repy TCP_PORT UDP_PORT")
+
+  mycontext['listenport_tcp'] = int(callargs[0])
+  mycontext['listenport_udp'] = int(callargs[1])
+  mycontext['udp_localport'] = None
+
+  # Launch the TCP Forwarder.
+  createthread(tcp_forwarder_listener)
+  
+  # Launch the UDP Forwarder.
+  createthread(udp_forwarder_listener)
+
+  # Launch advertiser and advertise this forwarders ip address, tcp port and udp port.
+  advertise_object = AdvertisePipe()
+  advertise_val = getmyip() + ',' +  str(mycontext['listenport_tcp']) + ',' +  str(mycontext['listenport_udp'])
+  advertise_object.add(ONE_HOP_FORWARDER_KEY, advertise_val)

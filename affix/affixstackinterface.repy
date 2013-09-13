@@ -1,0 +1,126 @@
+#!python
+"""
+<Program Name>
+  AffixStackInterface.repy
+
+<Author>
+  Monzur Muhammad, monzum@cs.washington.edu
+  Danny Y. Huang, yh1@cs.williams.edu
+
+<Date Started>
+  June 2010, refactored in Feb 2011.
+
+<Purpose> 
+  Main entry point for all applications that use affix. Provides a wrapper for
+  the affix stack object for easy instantiation. Also catches any exceptions that
+  are not consistant with the API semantics. Provides logging capabilities.
+
+"""
+
+# import the main affix stack library that allows us to build
+# a affix stack.
+dy_import_module_symbols("affix_stack")
+
+
+
+class AffixStackInterface:
+
+
+  def __init__(self, stack_str="", localhost=""):
+    """
+    <Purpose> 
+      Initialize the AffixStackInterface and register the
+      hostname or ip address of the node. If an argument is
+      not passed in for localhost, then we set localhost as
+      the ip address of the node.
+  
+    <Arguments>
+      stack_str - The affix stack string that will be used to build
+        a affix stack later on.
+
+      localhost - a hostname or ip address for the node that can be 
+        be used to identify this connection on the node.
+
+    <Exception>
+      None
+
+    <Return>
+      None
+    """
+
+    # If no affixs are supplied, we need to plug in the NoopAffix.
+    if stack_str == "":
+      stack_str = "(NoopAffix)"
+
+    if localhost == '':
+      try:
+        localhost = getmyip()
+      except InternetConnectivityError:
+        localhost = '127.0.0.1'
+
+
+    # Set the instance variables
+    self._stack_str = stack_str
+    self._localhost = localhost
+
+    
+    
+
+  def getmyip(self):
+    """
+    Return the hostname that is associated with the localmachine. It could be
+    some random key or server name, that was defined at initialization.
+    """
+    return self._localhost
+
+
+
+  # ...........................................................................
+  # Public methods that interface with the application.
+  # ----------------------------------------------------
+  # These functions defined below are used to overload the Repy V2
+  # network calls. These defined network calls are used to use the
+  # affix stack to perform network calls. 
+  # ...........................................................................
+
+  def sendmessage(self, destip, destport, message, localip, localport):
+    affix_stack = AffixStack(self._stack_str, self._localhost)
+    return affix_stack.peek().sendmessage(destip, destport, message, localip, localport)
+
+
+
+  def openconnection(self, destip, destport, localip, localport, timeout):
+    affix_stack = AffixStack(self._stack_str, self._localhost)
+    return affix_stack.peek().openconnection(destip, destport, localip, localport, timeout)
+
+
+
+  def listenformessage(self, localip, localport):
+    affix_stack = AffixStack(self._stack_str, self._localhost)
+    return affix_stack.peek().listenformessage(localip, localport)
+
+
+
+  def listenforconnection(self, localip, localport):
+    affix_stack = AffixStack(self._stack_str, self._localhost)
+    return affix_stack.peek().listenforconnection(localip, localport)
+
+
+  # ............................................................................
+  # Private functions used by AffixStackInterface.
+  # ............................................................................
+
+  def _create_affix_stack_object():
+    # The purpose of this function is to generate the affix stack with
+    # the affix string and localhost that this AffixStackInterface has 
+    # been initialized with. The reason we seperate out this function
+    # is to handle various errors and ensure that the internal errors
+    # are not seen by the application layer. This may be subject to
+    # change.
+    try:
+      AffixStack(self._stack_str, self._localhost)
+    except AffixError, err_msg:
+      # Should we raise a ConnectionRefusedError here? 
+      # ConnectionRefusedError does not make sense for some api calls
+      # such as listenforconnection().
+      raise ConnectionRefusedError(err_msg)
