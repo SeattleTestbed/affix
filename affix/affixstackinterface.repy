@@ -1,7 +1,7 @@
 #!python
 """
 <Program Name>
-  AffixStackInterface.repy
+  affixstackinterface.repy
 
 <Author>
   Monzur Muhammad, monzum@cs.washington.edu
@@ -10,15 +10,41 @@
 <Date Started>
   June 2010, refactored in Feb 2011.
 
-<Purpose> 
+<Description>
+  AFFIX is a framework that allows users to modify the
+  network behavior of their application by using various
+  software defined AFFIX Components. AffixStackInterface
+  is a wrapper module that is used load various AFFIX 
+  components to build a stack that can be used by the 
+  application. The purpose of each AFFIX component is to
+  address various networking issues or enhancements such 
+  as packet loss, nat traversal, bandwidth limitations etc.
+
+  Users may use any of the provided AFFIX components that 
+  are distributed with the AFFIX framework or they may build
+  their own AFFIX components to fit their need.
+
+  The AFFIX interface is used to initialize and build an
+  AffixStack object by providing an AFFIX stack string, where
+  the AFFIX stack string describes which AFFIX components 
+  need to be used for a connection. 
+
+<Usage>
+  
+
+<Purpose>
+  
+  
   Main entry point for all applications that use affix. Provides a wrapper for
   the affix stack object for easy instantiation. Also catches any exceptions that
   are not consistant with the API semantics. Provides logging capabilities.
 
 """
 
-# import the main affix stack library that allows us to build
-# a affix stack.
+# Import the main affix stack library that allows us to build
+# the affix stack. affix_stack.repy has most of the core code
+# that initializes different affix components and builds a 
+# stack that is ready to be used by the application.
 dy_import_module_symbols("affix_stack")
 
 
@@ -26,52 +52,65 @@ dy_import_module_symbols("affix_stack")
 class AffixStackInterface:
 
 
-  def __init__(self, stack_str="", localhost=""):
+  def __init__(self, stack_str="", virtual_host_name=""):
     """
     <Purpose> 
       Initialize the AffixStackInterface and register the
-      hostname or ip address of the node. If an argument is
-      not passed in for localhost, then we set localhost as
-      the ip address of the node.
+      hostname or ip address of the node. We allow users to
+      identify each unique virtual connection with an unique 
+      name. If an argument is provided for virtual host name,
+      it is used as the connection name for this instance.
+      Note that calling getmyip() will return the virtual host 
+      name that was provided instead of the actual ip address of 
+      the node. If a name or id is not provided for the connection
+      then the local ip address of the machine is used as the
+      virtual host name.
   
     <Arguments>
       stack_str - The affix stack string that will be used to build
         a affix stack later on.
 
-      localhost - a hostname or ip address for the node that can be 
-        be used to identify this connection on the node.
+      virtual_host_name - a hostname or ip address for the node 
+        that can be used to identify this connection on the node.
 
     <Exception>
       None
+
+    <Side Effects>
+      Invoking the getmyip() call through the ShimStackInterface
+      will no longer return the local ip address if virtual host
+      name was set.
 
     <Return>
       None
     """
 
     # If no affixs are supplied, we need to plug in the NoopAffix.
-    if stack_str == "":
-      stack_str = "(NoopAffix)"
+    #if stack_str == "":
+    #  stack_str = "(NoopAffix)"
 
-    if localhost == '':
+    if virtual_host_name == '':
       try:
-        localhost = getmyip()
+        virtual_host_name = getmyip()
       except InternetConnectivityError:
-        localhost = '127.0.0.1'
+        virtual_host_name = '127.0.0.1'
 
 
     # Set the instance variables
     self._stack_str = stack_str
-    self._localhost = localhost
+    self._virtual_host_name = virtual_host_name
 
     
     
 
   def getmyip(self):
     """
-    Return the hostname that is associated with the localmachine. It could be
-    some random key or server name, that was defined at initialization.
+    Return the virtual host name that is associated with this connection. 
+    It could be some random key or server name set by the user when the
+    ShimStackInterface object was initialized or the local ip address if
+    the user did not set the virtual host name.
     """
-    return self._localhost
+    return self._virtual_host_name
 
 
 
@@ -80,29 +119,35 @@ class AffixStackInterface:
   # ----------------------------------------------------
   # These functions defined below are used to overload the Repy V2
   # network calls. These defined network calls are used to use the
-  # affix stack to perform network calls. 
+  # affix stack to perform network calls. We have only overloaded 
+  # top level network calls. Any definition of handles or sockets
+  # are overloaded in the AffixStack object.
+  #
+  # The definition of the RepyV2 API can be found at:
+  # https://seattle.poly.edu/wiki/RepyV2API
   # ...........................................................................
 
   def sendmessage(self, destip, destport, message, localip, localport):
-    affix_stack = AffixStack(self._stack_str, self._localhost)
+    affix_stack = AffixStack(self._stack_str, self._virtual_host_name)
     return affix_stack.peek().sendmessage(destip, destport, message, localip, localport)
 
 
 
   def openconnection(self, destip, destport, localip, localport, timeout):
-    affix_stack = AffixStack(self._stack_str, self._localhost)
+    affix_stack = AffixStack(self._stack_str, self._virtual_host_name)
     return affix_stack.peek().openconnection(destip, destport, localip, localport, timeout)
 
 
 
   def listenformessage(self, localip, localport):
-    affix_stack = AffixStack(self._stack_str, self._localhost)
+    affix_stack = AffixStack(self._stack_str, self._virtual_host_name)
+
     return affix_stack.peek().listenformessage(localip, localport)
 
 
 
   def listenforconnection(self, localip, localport):
-    affix_stack = AffixStack(self._stack_str, self._localhost)
+    affix_stack = AffixStack(self._stack_str, self._virtual_host_name)
     return affix_stack.peek().listenforconnection(localip, localport)
 
 

@@ -21,11 +21,11 @@
 
 dy_import_module_symbols("session")
 dy_import_module_symbols("advertise_objects")
-dy_import_module_symbols("shimstackinterface")
+dy_import_module_symbols("affixstackinterface")
 dy_import_module_symbols("nat_forwarder_common_lib")
 
-# The shim string that the NAT Forwarder will use.
-NAT_SHIM_STRING = "(CoordinationShim)(NoopShim)"
+# The affix string that the NAT Forwarder will use.
+NAT_AFFIX_STRING = "(CoordinationAffix)(NoopAffix)"
 
 # Time to sleep if socket is blocking.
 SLEEP_TIME = 0.001
@@ -64,12 +64,12 @@ register_lock = createlock()
 def tcp_forwarder_listener():
 
   # Create a TCP server socket.
-  shim_stack_object = ShimStackInterface(NAT_SHIM_STRING)
-  tcp_forwarder_sock = shim_stack_object.listenforconnection(getmyip(), mycontext['listenport_tcp'])
+  affix_stack_object = AffixStackInterface(NAT_AFFIX_STRING)
+  tcp_forwarder_sock = affix_stack_object.listenforconnection(getmyip(), mycontext['listenport_tcp'])
   
   logmsg("Started TCP NAT Forwarder listener on '%s' port '%d'" % 
          (getmyip(), mycontext['listenport_tcp']), INFO_MSG)
-  logmsg("NAT Forwarder using shim string '%s'." % NAT_SHIM_STRING, INFO_MSG)
+  logmsg("NAT Forwarder using affix string '%s'." % NAT_AFFIX_STRING, INFO_MSG)
 
   while True:
     try:
@@ -502,12 +502,12 @@ def logmsg(message, msg_type):
 if callfunc == 'initialize':
 
   if len(callargs) < 1:
-    raise Exception("Usage:\n\tpython repy.py RESTRICTION_FILE nat_forwarder.repy TCP_PORT [NAT_SHIM_STRING]")
+    raise Exception("Usage:\n\tpython repy.py RESTRICTION_FILE nat_forwarder.repy TCP_PORT [NAT_AFFIX_STRING]")
 
   mycontext['listenport_tcp'] = int(callargs[0])
 
   if len(callargs) >= 2:
-    NAT_SHIM_STRING = callargs[1]
+    NAT_AFFIX_STRING = callargs[1]
   
   # Launch the TCP Forwarder.
   createthread(tcp_forwarder_listener)

@@ -3,14 +3,14 @@ dy_import_module_symbols("msg_chunk_lib")
 
 
 # Prints debug statement ==========================
-_MOBILITY_SHIM_SHOW_DEBUG = False
-_MOBILITY_SHIM_WRITE_DEBUG = False
+_MOBILITY_AFFIX_SHOW_DEBUG = False
+_MOBILITY_AFFIX_WRITE_DEBUG = False
 _debug_log_context = {'bytes_written': 0, 'lock': createlock()}
 def debug_log(*p, **q):
   _debug_log_context['lock'].acquire(True)
-  if _MOBILITY_SHIM_SHOW_DEBUG and 'show' in q and q['show']:
+  if _MOBILITY_AFFIX_SHOW_DEBUG and 'show' in q and q['show']:
     log(*p)
-  if _MOBILITY_SHIM_WRITE_DEBUG:
+  if _MOBILITY_AFFIX_WRITE_DEBUG:
     logstr = ' '.join([str(e) for e in p])
     logstr = 't = %.2f ' % getruntime() + logstr
     f = openfile('mobility.log', True)
@@ -67,14 +67,14 @@ def _check_current_ip():
       _mobility_ip_cache["lock"].release()
       return current_ip
 
-    # Get the latest IP from a global cache updated by the coordination shim. It
-    # is set to None of the coordination shim detects no network
+    # Get the latest IP from a global cache updated by the coordination affix. It
+    # is set to None of the coordination affix detects no network
     # connectivity. For detials, see the documentation within the coordination
-    # shim.
+    # affix.
     try:
-      current_ip = mycontext['coordination_shim_getmyip_cache']
+      current_ip = mycontext['coordination_affix_getmyip_cache']
 
-    # If the variable is not available (e.g. coordination shim not running), we
+    # If the variable is not available (e.g. coordination affix not running), we
     # obtain the IP from getmyip().
     except KeyError:
       try:
@@ -102,19 +102,19 @@ class MobileSocket:
 
 
 
-  def __init__(self, shim_socket, openconnection_arg_list=[], connection_id=None):
+  def __init__(self, affix_socket, openconnection_arg_list=[], connection_id=None):
 
-    # References to the internal state of the Shim Socket
-    self._socket = shim_socket._socket
-    self._shim_object = shim_socket._shim_object
-    self._next_shim = self._shim_object.get_next_shim_layer()
+    # References to the internal state of the Affix Socket
+    self._socket = affix_socket._socket
+    self._affix_object = affix_socket._affix_object
+    self._next_affix = self._affix_object.get_next_affix_layer()
     
     self._openconnection_arg_list = openconnection_arg_list
     self._connection_id = connection_id
 
     self._chunk_object = ChunkMessage(self.DATA_CHUNK_SEND_SIZE,
                                       self.DATA_CHUNK_RECV_SIZE, True, True)
-    self._chunk_object.add_socket(shim_socket)
+    self._chunk_object.add_socket(affix_socket)
 
     self._socket_lock = createlock()
 
@@ -178,7 +178,7 @@ class MobileSocket:
           try:
             # Attempt to openconnection, ignoring the usual network errors.
             debug_log('zzzz Attempting openconn', self._openconnection_arg_list, '\n', show=True)
-            new_socket = self._next_shim.openconnection(*(self._openconnection_arg_list))
+            new_socket = self._next_affix.openconnection(*(self._openconnection_arg_list))
             # Send our connection ID and wait for the server to acknowledge it.
             session_sendmessage(new_socket, "R" + self._connection_id)
 
