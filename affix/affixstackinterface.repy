@@ -27,18 +27,65 @@
   The AFFIX interface is used to initialize and build an
   AffixStack object by providing an AFFIX stack string, where
   the AFFIX stack string describes which AFFIX components 
-  need to be used for a connection. 
+  need to be used for a connection. The AFFIX framework
+  consists of network calls that are semantically consistent
+  with the Repy V2 network API which can be found here:
+  https://seattle.poly.edu/wiki/RepyV2API
 
 <Usage>
-  
+  This is a library file that must be imported by the application
+  in order for the application to use AFFIX for network 
+  communication. Once the user has imported the affixstackinterface
+  module, they can create and initialize an AffixStackInterface 
+  object. The AffixStackInterface object has various network wrapper
+  calls that may be used for communication. 
 
-<Purpose>
-  
-  
-  Main entry point for all applications that use affix. Provides a wrapper for
-  the affix stack object for easy instantiation. Also catches any exceptions that
-  are not consistant with the API semantics. Provides logging capabilities.
 
+  Sample Usage:
+  -------------
+
+  Importing affixstackinterface.repy library:
+
+    # Importing affixstackinterface.repy in Python.
+    import portability
+
+    _context = locals()
+    add_dy_support(_context)
+
+    dy_import_module_symbols("affixstackinterface.repy")
+    -----------------------------------------------------
+
+    # Importing affixstackinterface.repy in Repy.
+    dy_import_module_symbols("affixstackinterface.repy")
+
+
+  Creating and using AffixStackInterface module:
+
+    # We will be using the NoopAffix in this example.
+    # Every AFFIX string should contain the Coordination
+    # AFFIX at the top as the Coordination AFFIX is used
+    # by the server to serialze the AFFIX stack that it
+    # is using and advertising it to an advertise server
+    # such that the client is able to lookup the AFFIX
+    # string and deserialize it to generate it's own 
+    # AFFIX stack in order to have a balanced AFFIX stack
+    # on both the client and server side. More information
+    # can be found in the documentations files found in the
+    # docs/ directory or on our website at:
+    # https://affix.poly.edu/
+    affix_string = "(CoordinationAffix)(NoopAffix)"
+    virtual_host_name = "example_affix_connection"
+
+    affix_object = AffixStackInterface(affix_string, virtual_host_name)
+
+    # Open up a server socket that can be used to accept incoming 
+    # TCP connections. Documentation on Repy V2 network API can be
+    # found here: https://seattle.poly.edu/wiki/RepyV2API
+    tcp_sock_obj = affix_object.listenforconnection(getmyip(), 12345)
+
+    # Accept an incoming connection that now uses the AFFIX
+    # framework for network communication.
+    accept_socket = tcp_sock_obj.getconnection()
 """
 
 # Import the main affix stack library that allows us to build
