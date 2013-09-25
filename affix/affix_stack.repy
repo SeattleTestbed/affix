@@ -25,17 +25,17 @@
               Affix Stack
           -----------------
           |  ===========  |
-          |  =  AffixA  =  |
+          |  =  AffixA =  |
           |  ===========  |
           |       |       |
           |       V       |
           |  ===========  |
-          |  =  AffixB  =  |
+          |  =  AffixB =  |
           |  ===========  |
           |       |       |
           |       V       |
           |  ===========  |
-          |  =  AffixC  =  |
+          |  =  AffixC =  |
           |  ===========  |
           -----------------
                   |
@@ -57,6 +57,8 @@
 
 <History>
   03-07-2011: Renewed implementation of AffixStack.repy
+  09-20-2012: Changed copy() to make sure it doesn't still have old reference.
+              Changed peek() to make sure it doesn't use copy().
 """
 
 
@@ -276,10 +278,10 @@ class AffixStack:
     # Equivalent to top_affix = top_affix.next_affix()
     self.affix_stack_context['top_affix'] = top_affix.affix_context['affix_stack'].affix_stack_context['top_affix']
 
-    # Monzur - Before we return the top_affix, should we point top_affixs affix stack to None?
-    # User may be able to modify the current affix stack because the top_affix that is returned
-    # has reference to the rest of the stack. Or perhaps we should return a copy() of the top 
-    # affix?
+    # Monzur - Before we return the top_affix, should we point top_affixs affix
+    # stack to None? User may be able to modify the current affix stack because 
+    # the top_affix that is returned has reference to the rest of the stack. 
+    # Or perhaps we should return a copy() of the top affix?
 
     return top_affix
 
@@ -308,20 +310,15 @@ class AffixStack:
     if not self.affix_stack_context['top_affix']:
       raise AffixStackError("Affix stack is empty. Cannot peek() from stack.")
 
-    # Note that this copy method is the copy() method that exists in 
-    # each individual affix and is not the copy method of the affix stack.
-
     # Monzur - Should we return a copy here or should we return the original
     # affix object? Right now I am returning a copy so peek() cannot be used
     # to modify anything below this affix.    
-    copy_top_affix = self.affix_stack_context['top_affix'].copy()
-
-    return copy_top_affix
+    # copy_top_affix = self.affix_stack_context['top_affix'].copy()
 
     # Monzur - I decided to send the reference to the actual affix stack
     # as it seems reasonable that peek should be able to be used to modify
     # the affix stack below it.
-    #return self.affix_stack_context['top_affix']
+    return self.affix_stack_context['top_affix']
 
 
 
@@ -345,18 +342,19 @@ class AffixStack:
       A AffixStack object. Its a copy of self.
     """
 
-    new_stack = AffixStack('', self.affix_stack_context['localhost'])
+    full_affix_string = self.peek().get_advertisement_string()
+    # Monzur - Note that we are creating a new AffixStack object using the
+    # affix string from the advertisement string. This means that if there
+    # are any one sided AFFIX that are not being advertised, then they will
+    # not be copied over.
+    new_stack = AffixStack(full_affix_string, 
+                           self.affix_stack_context['localhost'])
 
-    # If affix stack is not empty then we want to copy over
-    # the top affix to the new AffixStack we just created.
-
-    if self.affix_stack_context['top_affix']:
-      # Copy over the top affix. Note that peek() is supposed
-      # to return a copy of the object and not a reference
-      # to it.
-      new_stack.push(self.peek())
 
     return new_stack
+
+
+
 
   def gethostname(self): 
     return self.affix_stack_context['localhost']
@@ -426,7 +424,7 @@ class AffixStack:
     # the new AffixStack objects stack_object to our own stack_object.
     # After we have copied it, we can now push on the top affix on top
     # of it.
-    new_stack_object = AffixStack(leftover_affix_str, self.affix_stack_context['localhost']
+    new_stack_object = AffixStack(leftover_affix_str, self.affix_stack_context['localhost'])
 
     # Create the new affix object.
     # The new stack will have a copy of the affixstack before this 
@@ -451,7 +449,6 @@ class AffixStack:
 
 
 
-  
 
   def create_affix_object(self, affix_name, affix_args, affix_stack_object):
     """

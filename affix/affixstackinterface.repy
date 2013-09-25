@@ -46,34 +46,34 @@
 
   Importing affixstackinterface.repy library:
 
-    # Importing affixstackinterface.repy in Python.
-    import portability
+    # Importing affixstackinterface.repy.
+    try:
+      dy_import_module_symbols("affixstackinterface.repy")
+    except NameError: 
+      # If dylink from repy is not available, we must import
+      # and initialize it.
+      import repyportability
+      _context = locals()
+      add_dy_support(_context)
 
-    _context = locals()
-    add_dy_support(_context)
-
-    dy_import_module_symbols("affixstackinterface.repy")
-    -----------------------------------------------------
-
-    # Importing affixstackinterface.repy in Repy.
-    dy_import_module_symbols("affixstackinterface.repy")
+      dy_import_module_symbols("affixstackinterface.repy")
 
 
   Creating and using AffixStackInterface module:
 
-    # We will be using the NoopAffix in this example.
-    # Every AFFIX string should contain the Coordination
-    # AFFIX at the top as the Coordination AFFIX is used
-    # by the server to serialze the AFFIX stack that it
-    # is using and advertising it to an advertise server
-    # such that the client is able to lookup the AFFIX
-    # string and deserialize it to generate it's own 
-    # AFFIX stack in order to have a balanced AFFIX stack
-    # on both the client and server side. More information
-    # can be found in the documentations files found in the
-    # docs/ directory or on our website at:
-    # https://affix.poly.edu/
-    affix_string = "(CoordinationAffix)(NoopAffix)"
+    # In this example we will be using the Compression
+    # AFFIX to compress all network traffic.
+    #
+    # We will also be assigning our connections a
+    # virtual host name which can be used by the client
+    # to connect to the server.
+    #
+    # We also recommend that every connection uses the 
+    # Coordination AFFIX at the top of their stack, 
+    # which helps balance the AFFIX stack on both the 
+    # client and server side. 
+
+    affix_string = "(CoordinationAffix)(CompressionAffix)"
     virtual_host_name = "example_affix_connection"
 
     affix_object = AffixStackInterface(affix_string, virtual_host_name)
@@ -203,7 +203,7 @@ class AffixStackInterface:
   # ............................................................................
 
   def _create_affix_stack_object():
-    # The purpose of this function is to generate the affix stack with
+    # The purpose of this function is to generate the affix stack with 
     # the affix string and localhost that this AffixStackInterface has 
     # been initialized with. The reason we seperate out this function
     # is to handle various errors and ensure that the internal errors
