@@ -119,7 +119,10 @@ class AffixStackInterface:
 
       virtual_host_name - a hostname or ip address for the node 
         that can be used to identify this connection on the node.
-
+        Often times the user might want to identify the network
+        connection with an unique id other then just the IP address
+        and the port due to there being duplicate IP addresses and
+        ports (when a node is in a private network).
     <Exception>
       None
 
@@ -132,10 +135,9 @@ class AffixStackInterface:
       None
     """
 
-    # If no affixs are supplied, we need to plug in the NoopAffix.
-    #if stack_str == "":
-    #  stack_str = "(NoopAffix)"
-
+    # If the user has not provided a virtual name with which 
+    # the user wants to identify the connection, then we default
+    # to the ip address of the node.
     if virtual_host_name == '':
       try:
         virtual_host_name = getmyip()

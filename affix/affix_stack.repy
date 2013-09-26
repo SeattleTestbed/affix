@@ -412,9 +412,14 @@ class AffixStack:
     # stack. That way the first item in the affix_str will be
     # at the top of the stack. 
 
-    # Base case.
+    # Base case. If we have reached the bottom of the stack
+    # then we add in an AFFIX that is basically a wrapper 
+    # around the Repy network API. This allows us to make
+    # actual network calls when we have reached the bottom
+    # of the stack.
     if not affix_str:
       self.affix_stack_context['top_affix'] = None
+      self.push(RepyNetworkApiWrapper())
       return
 
     # Build stack recursively. Any exceptions raised will just
