@@ -244,7 +244,7 @@ class UdpBranchingHelperAffix(BaseAffix):
     Make and return a copy of self.
     """
 
-    return UdpBranchingHelperAffix(self.affix_context['affix_stack'].copy(),
+    return UdpBranchingHelperAffix(self.affix_context['affix_stack'].deepcopy(),
                                   self.affix_context['optional_args'])
 
 

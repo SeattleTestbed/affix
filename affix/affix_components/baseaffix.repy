@@ -87,7 +87,7 @@ class BaseAffix:
 
     class MyAffix(BaseAffix):
       def copy(self):
-		mycopy = MyAffix(self.affix_context['affix_stack'].copy(), self.affix_context['optional_args']
+		mycopy = MyAffix(self.affix_context['affix_stack'].deepcopy(), self.affix_context['optional_args']
         mycopy._internalstate = self._internalstate
         return mycopy
 

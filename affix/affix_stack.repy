@@ -128,7 +128,7 @@ def find_and_register_affix(affix_name):
       break
 
   # Register the affix.
-  AFFIX_CLASS_DICT[affix_name] = _context.copy()[affix_name]    
+  AFFIX_CLASS_DICT[affix_name] = _context.deepcopy()[affix_name]    
           
 
 
@@ -324,34 +324,45 @@ class AffixStack:
 
 
 
-  def copy(self):
+  def deepcopy(self):
     """
     <Purpose>
-      Does a hard copy of self and returns it.
+      Does a hard copy of self recursively and returns it.
 
     <Arguments>
       None
 
     <Side Effects>
-      None
+      A new AffixStack object is created.
 
     <Exception>
       None
 
     <Return>
-      A AffixStack object. Its a copy of self.
+      A AffixStack object. It is deepcopy of self.
     """
 
-    full_affix_string = self.peek().get_advertisement_string()
-    # Monzur - Note that we are creating a new AffixStack object using the
-    # affix string from the advertisement string. This means that if there
-    # are any one sided AFFIX that are not being advertised, then they will
-    # not be copied over.
-    new_stack = AffixStack(full_affix_string, 
-                           self.affix_stack_context['localhost'])
+    # In order to do a deepcopy() of the stack, we need to go through
+    # every single AFFIX component in the stack and create a copy of 
+    # it. We cannot use the AFFIX string to build the copy as AFFIX
+    # components might have been copied or deleted since this stack
+    # was initialized.
 
+    # If the current stack is empty, then we have reached the bottom
+    # and can return an empty stack, otherwise we will copy the top
+    # AFFIX component and push it on to the new empty stack.
+    new_stack = AffixStack()
+    try:
+      top_affix = self.peek()
+    except AffixStackError, err:
+      pass
+    else:
+      new_stack.push(top_affix.copy())
+      new_stack.affix_stack_context['affix_str'] = self.affix_stack_context['affix_str']
+    
 
     return new_stack
+
 
 
 

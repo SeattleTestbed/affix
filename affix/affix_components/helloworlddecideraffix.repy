@@ -115,7 +115,7 @@ class HelloWorldDeciderAffix(BaseAffix):
     """
     The copy function is implemented.
     """
-    affix_stack_copy = self.affix_context['affix_stack'].copy()
+    affix_stack_copy = self.affix_context['affix_stack'].deepcopy()
     optional_args_copy = self.affix_context['optional_args']
 
     my_copy = HelloWorldDeciderAffix(affix_stack_copy, optional_args_copy)

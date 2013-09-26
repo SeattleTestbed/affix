@@ -62,7 +62,7 @@ class CoordinationAffix(BaseAffix):
 
 
   def copy(self):
-    return CoordinationAffix(self.affix_context['affix_stack'].copy(), self.affix_context['optional_args'])
+    return CoordinationAffix(self.affix_context['affix_stack'].deepcopy(), self.affix_context['optional_args'])
 
 
 

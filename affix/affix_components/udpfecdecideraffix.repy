@@ -95,7 +95,7 @@ class UdpFECDeciderAffix(BaseUdpDeciderAffix):
     return 0
 
   def copy(self):
-    affix_stack_copy = self.affix_context['affix_stack'].copy()
+    affix_stack_copy = self.affix_context['affix_stack'].deepcopy()
     optional_args = self.affix_context['optional_args']
 
     return UdpFECDeciderAffix(affix_stack_copy, optional_args)

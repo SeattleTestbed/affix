@@ -6,7 +6,7 @@ class NoopAffix(BaseAffix):
   """
 
   def copy(self):
-    return NoopAffix(self.affix_context['affix_stack'].copy(), self.affix_context['optional_args'])
+    return NoopAffix(self.affix_context['affix_stack'].deepcopy(), self.affix_context['optional_args'])
 
 
   

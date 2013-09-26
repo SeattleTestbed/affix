@@ -106,7 +106,7 @@ class UdpCompressionDeciderAffix(BaseUdpDeciderAffix):
 
 
   def copy(self):
-    affix_stack_copy = self.affix_context['affix_stack'].copy()
+    affix_stack_copy = self.affix_context['affix_stack'].deepcopy()
     optional_args = self.affix_context['optional_args']
 
     return UdpCompressionDeciderAffix(affix_stack_copy, optional_args)
