@@ -128,7 +128,7 @@ def find_and_register_affix(affix_name):
       break
 
   # Register the affix.
-  AFFIX_CLASS_DICT[affix_name] = _context.deepcopy()[affix_name]    
+  AFFIX_CLASS_DICT[affix_name] = _context.copy()[affix_name]    
           
 
 
@@ -419,8 +419,13 @@ class AffixStack:
     # of the stack.
     if not affix_str:
       self.affix_stack_context['top_affix'] = None
-      self.push(RepyNetworkApiWrapper())
       return
+      # We were previously pushing down the RepyNetworkApiWrapper
+      # onto a stack in order to resolve issue #11. Until further
+      # discussion, we will not be not adding the wrapper on to
+      # the stack.
+      # self.push(RepyNetworkApiWrapper())
+      
 
     # Build stack recursively. Any exceptions raised will just
     # percolate up. This may raise a AffixConfigError

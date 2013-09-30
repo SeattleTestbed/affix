@@ -35,10 +35,10 @@
 
 dy_import_module_symbols("advertise_objects")
 dy_import_module_symbols("affix_exceptions")
-
+dy_import_module_symbols("affixstackinterface")
 
 # Whether we want to print debug statements.
-_COORDINATION_AFFIX_DEBUG_MODE = False
+_COORDINATION_AFFIX_DEBUG_MODE = False 
 
 
 class CoordinationAffix(BaseAffix):
@@ -174,7 +174,6 @@ class CoordinationAffix(BaseAffix):
       Same as the network API in repy v2.    
 
     """
-
     # Keep track of how much time we have spent to avoid exceeding the timeout.
     start_time = getruntime()
 
@@ -184,7 +183,6 @@ class CoordinationAffix(BaseAffix):
 
     # Reverse the results as the latest affix advertisement always comes last.
     lookup_result_list.reverse()
-
     # We remember all the affixs that fail to connect, so that we can piggyback
     # this error report along with TimeoutError.
     failed_affix_str = ''

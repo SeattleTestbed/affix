@@ -95,7 +95,6 @@
 dy_import_module_symbols("affix_stack")
 
 
-
 class AffixStackInterface:
 
 
@@ -144,6 +143,12 @@ class AffixStackInterface:
       except InternetConnectivityError:
         virtual_host_name = '127.0.0.1'
 
+    # If the user does not provide any AFFIX string then we default
+    # to a noop AFFIX. Since only the BaseAffix has the ability to
+    # escape the AFFIX framework and call the underlying network
+    # API, we need at least one AFFIX component in the stack.
+    if not stack_str:
+      stack_str = '(NoopAffix)'
 
     # Set the instance variables
     self._stack_str = stack_str
