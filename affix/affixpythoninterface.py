@@ -15,6 +15,10 @@
   please look in the files affixstackinterface.repy
   and affix_stack.repy.
 
+<Description>
+  TODO: Write up a proper description after all methods
+  have been implemented.
+
 <Usage>
   from affixpythoninterface import *
 
@@ -139,6 +143,25 @@ def set_affix_string(new_affix_string):
   # the AffixStackInterface object and overload the network 
   # operations with the new object.
   overload_repy_network_api()
+
+
+
+
+def set_virtual_host_name(new_virtual_name):
+  """
+  Implement a method that overwrites the virtual host
+  name for the AffixStackInterface object.
+  """
+  pass
+
+
+
+def set_affixstackinterface_object(new_affixstackinterface_object):
+  """
+  Implement a method that allows user to create their own instance
+  of AffixStackInterface object and set it for their application.
+  """
+  pass
 
 
 
