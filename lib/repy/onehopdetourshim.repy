@@ -1,0 +1,330 @@
+#!/bin/python
+"""
+<Program Name>
+  OneHopDetourShim.repy
+  
+<Purpose>
+  Relay all messages through a forwarder instead of directly 
+  sending the message.
+  
+<Started>
+  16 August 2011
+  
+<Author>
+  Monzur Muhammad
+  monzum@cs.washington.edu
+"""
+
+dy_import_module_symbols("session.repy")
+dy_import_module_symbols("advertise_objects")
+dy_import_module_symbols("one_hop_detour_common.repy")
+
+
+class OneHopDetourShim(BaseShim):
+
+  one_hop_forwarder_cache = LookupCache()
+  
+  def __init__(self, shim_stack=ShimStack(), optional_args=None):
+    """
+    <Purpose>
+      Initialize the OneHopDetourShim. The OneHopDetourShim is
+      used to relay the message from the sender to the receiver
+      through a forwarder node. This shim will be handy if two 
+      nodes have difficult communicating with each other due to
+      a bad network configuration between them, in which case a
+      third node that has good connectivity to both the nodes 
+      can be used as an intermediate forwarder node.
+      
+    <Arguments>
+      shim_stack - A shim stack that will be used as the stack
+        beneath us. By default this is an empty stack.
+        
+      optional_args - Any argument that is provided for this 
+        particular shim. If optional args is provided, it will
+        be used to determine the ip address and the port of the
+        forwarding node.
+        
+    <Side Effects>
+      None
+      
+    <Exceptions>
+      ShimArgumentError will be raised if the arguments provided
+      is of not the right form or are incorrect.
+
+      Assertion error if optional args is not type of list.
+        
+    <Return>
+      None
+    """
+    
+    self.forwarder_context = {}
+    self.forwarder_context['tcp_forwarder'] = None
+    self.forwarder_context['udp_forwarder'] = None
+    
+    # If optional args was provided, make sure it was a list type.
+    if optional_args:
+      assert(isinstance(optional_args, list)), "Bad optional args. Optional arg must be a list."
+      assert(len(optional_args) == 4), "Bad optional args. Optional arg if provided must contain " + \
+          "4 elements: [tcp_forwarder_ip, tcp_forwarder_port, udp_forwarder_ip, udp_forwarder_port]."
+
+      # If optional args was provided, then we use it to determine
+      # the ip address and port of the forwarder for both tcp connection
+      # and udp connections.
+      try:
+        self.forwarder_context['tcp_forwarder'] = (optional_args[0], int(optional_args[1]))
+      except ValueError, err:
+        raise ShimArgumentError("Bad optional args. " + optional_args[1] + " is not an integer.")
+
+      try:
+        self.forwarder_context['udp_forwarder'] = (optional_args[2], int(optional_args[3]))
+      except ValueError, err:
+        raise ShimArgumentError("Bad optional args. " + optional_args[3] + " is not an integer.")
+      
+      
+    BaseShim.__init__(self, shim_stack, optional_args)
+    
+    
+  # ==========================================
+  # TCP Connection
+  # ==========================================
+  def openconnection(self, destip, destport, localip, localport, timeout):
+    """
+    <Purpose>
+      Instead of directly connecting to the destip:destport, we
+      connect to a forwarder and have the forwarder connect to 
+      the destip:destport. This way all the messages are forwarded
+      through the forwarder.
+      Find the right forwarder and connect to it. If the forwarder ip
+      and port were provided when initializing the shim then we use that.
+      Otherwise we do a lookup of all the forwarders available and try to
+      sequentially connect to them. If we successfully connect to them, then
+      we continue.
+      
+    <Arguments>
+      Same arguments as the RepyV2 API call openconnection()
+      
+    <Side Effects>
+      Connects to an intermediate node instead of the destination node.
+      
+    <Exceptions>
+      The errors raised by RepyV2 API call openconnection.
+      
+    <Return>
+      A socket like object.
+    """
+    
+    forwarder_list = []
+
+    # Check to see if a default forwarder ip:port was provided.
+    if self.forwarder_context['tcp_forwarder']:
+      forwarder_list = [self.forwarder_context['tcp_forwarder']]
+
+    # If no default forwarder was provided, then we do a lookup.
+    else:
+      forwarder_lookup_list = self.one_hop_forwarder_cache.lookup(ONE_HOP_FORWARDER_KEY)
+
+      for cur_forwarder in forwarder_lookup_list:
+        if not cur_forwarder:
+          continue
+        (forwarder_ip, tcp_port, udp_port) = cur_forwarder.split(',')
+        forwarder_list.append((forwarder_ip, int(tcp_port)))
+
+
+    if len(forwarder_list) == 0:
+      raise AddressBindingError("Unable to connect to any One Hop Detour Forwarders")
+
+    # Now connect to the forwarder.
+    for for_ip, for_port in forwarder_list:
+      next_sockobj = self.get_next_shim_layer().openconnection(for_ip, for_port, localip, localport, timeout)
+      header_msg = CONNECT_TAG + ':' + '%s,%s' % (destip, str(destport))
+        
+      # Once we are connected send the initial message and receive a response. 
+      # If the forwarder has successfully connected we return the socket object. 
+      session_sendmessage(next_sockobj, header_msg)
+      confirmation_msg = session_recvmessage(next_sockobj)
+      
+      # We have successfully connected.
+      if confirmation_msg == CONNECT_SUCCESS:
+        return ShimSocket(next_sockobj, self)
+      
+    # We failed to all the forwarders, so we raise AddressBinding Error
+    else:
+      raise AddressBindingError("Unable to connect to any One Hop Detour Forwarders")
+      
+    
+
+
+
+  def tcpserversocket_getconnection(self, tcpserversocket):
+    """
+    <Purpose>
+      Once the connection has been made, the forwarder will send
+      a message, noting what the IP:Port of the original client
+      was.
+
+    <Arguments>
+      tcpserversocket - a tcpserversocket that can be used to establish
+        a connection.
+
+    <Side Effects>
+      None
+
+    <Exceptions>
+      Same as RepyV2 Api call tcpserver.getconnection()
+
+    <Return>
+      A tuple of remoteip, remoteport and sockobj.
+    """
+    
+    # Call next layer of tcpserver.getconnection()
+    (forwarder_ip, forwarder_port, sockobj) = self.get_next_shim_layer().tcpserversocket_getconnection(tcpserversocket)
+
+    # Once the connection has been made, receive some info from the forwarder
+    # about the client.
+    try:
+      client_info = session_recvmessage(sockobj)
+    except (SocketClosedLocal, SocketClosedRemote), err:
+      raise SocketWouldBlockError("No connection available currently.")
+    
+    # If we failed to connect properly with the forwarder and the client, then 
+    # we close the socket and raise a SocketWouldBlockError.
+    if client_info.startswith(CONNECT_FAIL):
+      try:
+        sockobj.close()
+      except:
+        pass
+      raise SocketWouldBlockError("No connection available currently.")
+
+    elif client_info.startswith(CONNECT_SUCCESS):
+      (client_ip, client_port_str) = client_info.split(',')[1].split(':')
+      return (client_ip, int(client_port_str), ShimSocket(sockobj, self))
+    else:
+      raise SocketWouldBlockError("No connection available currently.")
+
+
+
+    
+  # ==========================================
+  # UDP Connection
+  # ==========================================
+  def sendmessage(self, destip, destport, message, localip, localport):
+    """
+    <Purpose>
+      Send an UDP datagram to the destip:destport through an intermediate
+      forwarder. It is not guaranteed that the entire message will be 
+      delivered to the destination host.
+      
+    <Arguments>
+      Same arguments as the RepyV2 API call sendmessage()
+      
+    <Side Effects>
+      The message is sent through a forwarder instead of directly.
+      
+    <Exceptions>
+      The same exceptions as the RepyV2 API call sendmessage()
+      
+    <Return>
+      The number of bytes sent on success.
+    """
+    
+    forwarder_list = []
+    
+    # Check to see if a default forwarder ip:port was provided.
+    if self.forwarder_context['udp_forwarder']:
+      forwarder_list = [self.forwarder_context['udp_forwarder']]
+    
+    # If no default forwarder was provided, then we do a lookup to find a forwarder.
+    else:
+      forwarder_lookup_list = self.one_hop_forwarder_cache.lookup(ONE_HOP_FORWARDER_KEY)
+      
+      for cur_forwarder in forwarder_lookup_list:
+        (forwarder_ip, tcp_port, udp_port) = cur_forwarder.split(',')
+        forwarder_list.append((forwarder_ip, int(udp_port)))
+
+        
+    # Now forward the UDP datagram through the forwarder.
+    for for_ip, for_port in forwarder_list:
+      # Create the new message that will be sent to the forwarder.
+      msg_header = '%s:%s,%s:' % (CONNECT_UDP, destip, str(destport))
+      forward_msg = msg_header + message
+      
+      try:
+        total_bytes_sent = self.get_next_shim_layer().sendmessage(for_ip, for_port, forward_msg, localip, localport)
+        msg_bytes_sent = total_bytes_sent - len(msg_header)
+        
+        # Make sure that the number of bytes sent is bigger then the size of the header.
+        # Otherwise return 0.
+        if msg_bytes_sent > 0:
+          return msg_bytes_sent
+        else:
+          return 0 
+          
+      except (AddressBindingError, AlreadyListeningError, DuplicateTupleError), err:
+        continue
+        
+    else:
+      raise AddressBindingError("Unable to send UDP datagram through any forwarders") 
+
+      
+      
+      
+      
+  def udpserversocket_getmessage(self, udpserversocket):
+    """
+    <Purpose>
+      Receive a message from a forwarder and pass the message up to the 
+      application layer with the ip address and port of the original node
+      rather then that of the forwarder node.
+      
+    <Arguments>
+      Same as the RepyV2 API call udpserver.getmessage()
+      
+    <Side Effects>
+      The ip address and port returned from the next layer is changed.
+      
+    <Exceptions>
+      Same as the RepyV2 API call udpserver.getmessage()
+      
+    <Return>
+      A tuple of remote IP, remote port and message.
+    """
+
+    # Call the next layer of getmessage()
+    (for_ip, for_port, forward_message) = self.get_next_shim_layer().udpserversocket_getmessage(udpserversocket)
+    
+    # If an incorrect tag is found then we raise a SocketWouldBlockError.
+    if not forward_message.startswith(CONNECT_UDP):
+      raise SocketWouldBlockError("No UDP datagram available currently.")
+
+    # Extract all the info out of the UDP datagram.
+    try:
+      (conn_tag, node_info, msg) = forward_message.split(':', 2)
+    except ValueError:
+      # If we can't unpack 
+      raise SocketWouldBlockError("No UDP datagram available currently.")
+
+    (node_ip, node_port) = node_info.split(',')
+
+    return (node_ip, int(node_port), msg)
+    
+    
+    
+  # ==========================================
+  # Public required functions
+  # ==========================================
+  def copy(self):
+    shim_stack_copy = self.shim_context['shim_stack'].copy()
+    optional_args_copy = self.shim_context['optional_args']
+
+    my_copy = OneHopDetourShim(shim_stack_copy, optional_args_copy)
+    return my_copy
+    
+    
+  def get_advertisement_string(self):
+    # If optional args was provided, then we advertise it.
+    if self.shim_context['optional_args']:
+      advertise_string = '(OneHopDetourShim,%s)' % ','.join(self.shim_context['optional_args'])
+    else:
+      advertise_string = '(OneHopDetourShim)'
+  
+    return advertise_string + self.get_next_shim_layer().get_advertisement_string()

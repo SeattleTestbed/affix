@@ -1,0 +1,215 @@
+dy_import_module_symbols("session")
+dy_import_module_symbols("msg_chunk_lib")
+
+
+# Prints debug statement ==========================
+_MOBILITY_SHIM_SHOW_DEBUG = False
+_MOBILITY_SHIM_WRITE_DEBUG = False
+_debug_log_context = {'bytes_written': 0, 'lock': createlock()}
+def debug_log(*p, **q):
+  _debug_log_context['lock'].acquire(True)
+  if _MOBILITY_SHIM_SHOW_DEBUG and 'show' in q and q['show']:
+    log(*p)
+  if _MOBILITY_SHIM_WRITE_DEBUG:
+    logstr = ' '.join([str(e) for e in p])
+    logstr = 't = %.2f ' % getruntime() + logstr
+    f = openfile('mobility.log', True)
+    f.writeat(logstr, _debug_log_context['bytes_written'])
+    _debug_log_context['bytes_written'] += len(logstr)
+    f.close()
+  _debug_log_context['lock'].release()
+# =================================================
+
+
+
+
+
+def _abbrev(input_str):
+  """
+  Abbreviates the input string. Returns the first 100 bytes, followed by
+  elipses, and then the last 100 bytes.
+
+  """
+  length = len(input_str)
+  if length < 200:
+    return input_str
+  else:
+    return input_str[0:100] + ' ... (' + str(length - 200) + ' bytes omitted) ... ' + input_str[length-100 : ]
+
+
+
+
+
+_mobility_ip_cache = {"last_check_time": 0,
+                      "last_ip":         getmyip(),
+                      "lock" :           createlock()}
+
+# The minimum time between successive checks for IP change, even if we
+# are asked to check more frequently.
+_CHECK_IP_INTERVAL = 2
+
+def _check_current_ip():
+    """
+    Returns the result of getmyip(). If getmyip() fails due to
+    InternetConnectivityError being raised then we will return None.
+    Results are cached so we don't have to call getmyip() too frequently.
+
+    """
+    current_time = getruntime()
+
+    _mobility_ip_cache["lock"].acquire(True)
+    if current_time - _mobility_ip_cache["last_check_time"] > _CHECK_IP_INTERVAL:
+      _mobility_ip_cache["last_check_time"] = current_time
+      _mobility_ip_cache["lock"].release()
+    else:
+      # We checked recently enough that we will just return the cached result.
+      current_ip = _mobility_ip_cache["last_ip"]
+      _mobility_ip_cache["lock"].release()
+      return current_ip
+
+    # Get the latest IP from a global cache updated by the coordination shim. It
+    # is set to None of the coordination shim detects no network
+    # connectivity. For detials, see the documentation within the coordination
+    # shim.
+    try:
+      current_ip = mycontext['coordination_shim_getmyip_cache']
+
+    # If the variable is not available (e.g. coordination shim not running), we
+    # obtain the IP from getmyip().
+    except KeyError:
+      try:
+        current_ip = getmyip()
+      except InternetConnectivityError:
+        current_ip = None
+
+    _mobility_ip_cache["lock"].acquire(True)
+    _mobility_ip_cache["last_ip"] = current_ip
+    _mobility_ip_cache["lock"].release()
+
+    return current_ip
+
+
+
+
+
+class MobileSocket:
+
+  # How long to sleep between checking socket state.
+  SLEEP_TIME = 1
+
+  DATA_CHUNK_SEND_SIZE = 2**11
+  DATA_CHUNK_RECV_SIZE = 2**11
+
+
+
+  def __init__(self, shim_socket, openconnection_arg_list=[], connection_id=None):
+
+    # References to the internal state of the Shim Socket
+    self._socket = shim_socket._socket
+    self._shim_object = shim_socket._shim_object
+    self._next_shim = self._shim_object.get_next_shim_layer()
+    
+    self._openconnection_arg_list = openconnection_arg_list
+    self._connection_id = connection_id
+
+    self._chunk_object = ChunkMessage(self.DATA_CHUNK_SEND_SIZE,
+                                      self.DATA_CHUNK_RECV_SIZE, True, True)
+    self._chunk_object.add_socket(shim_socket)
+
+    self._socket_lock = createlock()
+
+    if self._openconnection_arg_list:
+      createthread(self._check_state_thread)
+
+
+
+  def replace_socket(self, new_socket):
+    """
+    Closes the previously socket and adds the given socket to the
+    chunking object so the new socket will be used to send and receive.
+
+    """
+    self._socket_lock.acquire(True)
+    try:
+      self._socket.close()
+      self._chunk_object.add_socket(new_socket)
+      self._socket = new_socket
+    finally:
+      self._socket_lock.release()
+
+
+
+  def is_closed(self):
+    """
+    Returns whether this socket has been closed either locally or remotely.
+    
+    """
+    return self._chunk_object._closed_local or self._chunk_object._closed_remote
+
+
+
+  def _check_state_thread(self):
+    """
+    Periodically checks if the socket has been closed or our IP has changed.
+
+    """
+    while not self.is_closed():
+
+      sleep(self.SLEEP_TIME)
+
+      # If our IP has changed, then we want to reconnect.
+      socket_ip = self._openconnection_arg_list[2]
+      my_ip = _check_current_ip()
+      ip_changed = my_ip is not None and my_ip != socket_ip
+      if ip_changed:
+        self._openconnection_arg_list[2]
+        debug_log('zzzz IP changed from', socket_ip, 'to', my_ip, '.\n', show=True)
+
+      # Also check if the socket has been closed.
+      if ip_changed or len(self._chunk_object.get_active_socket_list()) == 0:
+
+        debug_log('\n' * 2, show=True)
+        debug_log('*' * 80, '\n', show=True)
+        debug_log('Disconnection.\n', show=True)
+
+        new_socket = None
+
+        while not self.is_closed():
+          try:
+            # Attempt to openconnection, ignoring the usual network errors.
+            debug_log('zzzz Attempting openconn', self._openconnection_arg_list, '\n', show=True)
+            new_socket = self._next_shim.openconnection(*(self._openconnection_arg_list))
+            # Send our connection ID and wait for the server to acknowledge it.
+            session_sendmessage(new_socket, "R" + self._connection_id)
+
+          except (NetworkError, TimeoutError), err:
+            debug_log('zzzz Openconn failed:', repr(err), err, '\n', show=True)
+            sleep(2)
+
+          except Exception, err:
+            debug_log('zzzz Openconn failed unexpectedly:', repr(err), err, '\n', show=True)
+            sleep(2)
+
+          else:
+            self.replace_socket(new_socket)
+            debug_log('zzzz Connectivity restored by openconn.\n', show=True)
+            break
+
+    debug_log('\nzzzz while loop exits \n', show=True)
+
+
+
+  def send(self, data):
+    return self._chunk_object.senddata(data)
+
+
+
+  def recv(self, bytes):
+    return self._chunk_object.recvdata(bytes)
+
+
+
+  def close(self):
+    return self._chunk_object.close()
+
+

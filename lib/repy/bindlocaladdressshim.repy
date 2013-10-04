@@ -1,0 +1,153 @@
+#!python
+"""
+<Program Name>
+  bindlocaladdressshim.repy
+
+<Author>
+  Monzur Muhammad
+  monzum@cs.washington.edu
+
+<Date Started>
+  November 22nd, 2011.
+
+<Purpose>
+  The purpose of this shim is to bind a socket to an alternate
+  address then the one that is called by the application. An
+  example when this would be useful would be when we want to 
+  bind to a local ip address that is associated with a different
+  network interface then the local interface. For example if you
+  want to bind to the wifi network card instead of the ethernet.
+"""
+
+class BindLocalAddressShim(BaseShim):
+
+  def __init__(self, shim_stack, optional_args=None):
+    """
+    <Purpose>
+      Initialize the BindLocalAddressShim.
+
+    <Arguments>
+      shim_stack - This is the shim stack that lies
+        beneath this particular shim.
+
+      optional_args - If provided, this should contain one
+        string that has the ip address and port we want to
+        bind to in the format IP:Port
+   
+    <Side Effects>
+      None
+
+    <Exceptions>
+      Exception raised if optional arguments provided is of
+      the wrong format.
+    """
+
+    # Check if optional arguments are provided.
+    if optional_args:
+      assert(isinstance(optional_args, list)), "Bad optional args. Optional arg must be a list."
+      assert(len(optional_args) == 1), "Bad optional args. Optional arg must contain one value. (IP:Port)"
+
+      try:
+        localip, localport = optional_args[0].split(':')
+        
+        self.bind_localip = localip
+        self.bind_localport = int(localport)
+
+      except ValueError:
+        raise ShimInternalError("Optional arg provided is not of valid format. Must be IP:Port")
+
+    else:
+      self.bind_localip = None
+      self.bind_localport = None
+
+    BaseShim.__init__(self, shim_stack, optional_args)
+
+
+
+
+  def openconnection(self, destip, destport, localip, localport, timeout):
+    """
+    <Purpose>
+      If a different localip and port has been specified, then 
+      we want to use to the alternate local IP:Port to bind this 
+      connection.
+
+    <Arguments>
+      Same as the RepyV2 api.
+
+    <Side Effects>
+      None
+
+    <Exceptions>
+      Same as the RepyV2 api.
+
+    <Return>
+      A TCPServerSocket
+    """
+
+    # Check if an alternate localip and port has been specified
+    if self.bind_localip and self.bind_localport:
+      next_sockobj = self.get_next_shim_layer().openconnection(destip, destport, self.bind_localip, self.bind_localport, timeout)
+    else:
+      next_sockobj = self.get_next_shim_layer().openconnection(destip, destport, localip, localport, timeout)
+
+    return ShimSocket(next_sockobj, self)
+
+
+
+
+  def sendmessage(self, destip, destport, message, localip, localport):
+    """
+    <Purpose>
+      If a different localip and localport is specified when this shim 
+      is initialized, then we bind to those IP:Port before we send the
+      UDP datagram rather then using the localip and localport provided
+      in the argument.
+
+    <Arguments>
+      Same as the RepyV2 api.
+
+    <Side Effects>
+      None
+
+    <Exceptions>
+      Same as the RepyV2 api.
+
+    <Return>
+      The number of bytes sent on success.
+    """
+
+    # Check if an alternate localip and port has been specified
+    if self.bind_localip and self.bind_localport:
+      byte_sent = self.get_next_shim_layer().sendmessage(destip, destport, message, self.bind_localip, self.bind_localport)
+    else:
+      byte_sent = self.get_next_shim_layer().sendmessage(destip, destport, message, localip, localport)
+
+    return byte_sent
+    
+
+
+
+  # ============================================
+  # Required Public Functions                  
+  # ============================================
+
+  def copy(self):
+    """
+    Make a copy of self.
+    """
+    shim_stack_copy = self.shim_context['shim_stack'].copy()
+    optional_args_copy = self.shim_context['optional_args']
+
+    my_copy = BindLocalAddressShim(shim_stack_copy, optional_args_copy)
+    return my_copy
+
+
+
+  def get_advertisement_string(self):
+    """
+    The BindLocalAddressShim is an one sided shim, so it does not need
+    to advertise itself.
+    """
+
+    return self.get_next_shim_layer().get_advertisement_string() 

@@ -1,0 +1,123 @@
+#!python
+"""
+<Program Name>
+  udplossshim.repy
+
+<Author>
+  Fraida Fund
+  ffund01@students.poly.edu
+
+<Date Started>
+  December 15th, 2011
+
+<Purpose>
+  The purpose of the UdpLossShim is to emulate a lossy network environment
+  by dropping a specified ratio of UDP packets. This can be a useful tool to 
+  examine how UDP applications (or shims!) behave in a lossy environment.
+"""
+
+# Import random, which we'll use to choose which packets to drop
+dy_import_module_symbols('random')
+
+dy_import_module_symbols("shim_exceptions")
+
+class UdpLossShim(BaseShim):
+
+
+  def __init__(self, shim_stack, optional_args=None):
+    """
+    <Purpose>
+      Initialize this shim.
+
+    <Arguments>
+      shim_stack - This is the shim stack that resides beneath
+          the current shim. 
+
+      optional_args - The first and second optional args (if provided) 
+          define the sending drop rate and the receiving drop rate, respectively
+
+    <Side Effects>
+      None
+
+    <Exceptions>
+      ShimInternalError raised if the optional args provided are not of
+      the proper format.
+
+      SocketWouldBlockError raised whenever we drop a received packet
+
+    <Return>
+      None
+    """
+
+    BaseShim.__init__(self, shim_stack, optional_args)
+
+
+    # Get the optional args and set send and recv drop rates
+
+    if optional_args:
+      try:
+        self._send_drop_rate = float(optional_args[0])
+      except ValueError:
+        raise ShimInternalError("Invalid send drop rate.")
+      if self._send_drop_rate > 1.0 or self._send_drop_rate < 0.0:
+        raise ShimInternalError("Invalid send drop rate.")
+    else:
+      self._send_drop_rate = 0
+
+    if optional_args and len(optional_args) > 1:
+      try:
+        self._recv_drop_rate = float(optional_args[1])
+      except ValueError:
+        raise ShimInternalError("Invalid recv drop rate.")
+      if self._recv_drop_rate > 1.0 or self._recv_drop_rate < 0.0:
+        raise ShimInternalError("Invalid recv drop rate.")
+    else:
+      self._recv_drop_rate = 0
+
+
+
+
+  def sendmessage(self, destip, destport, message, localip, localport):
+
+    # Roll the dice to see if we should drop this packet
+    number = randomfloat()
+
+    # Silently drop the packet if the random float was less than the send drop rate
+    if number < self._send_drop_rate:
+      return len(message)
+
+    # Otherwise send the packet
+    return self.get_next_shim_layer().sendmessage(destip, destport, message, localip, localport)
+
+
+
+
+  def udpserversocket_getmessage(self, udpserversocket):
+
+    # Roll the dice to see if we should drop this packet
+    number = randomfloat()
+
+    # Drop the packet if the random float was less than the recv drop rate
+    if number < self._recv_drop_rate:
+      msg = self.copy().get_next_shim_layer().udpserversocket_getmessage(udpserversocket)
+      raise SocketWouldBlockError
+
+    # Otherwise recv the packet
+    else:
+      return self.copy().get_next_shim_layer().udpserversocket_getmessage(udpserversocket)
+
+
+
+  # =========================================
+  # Required Public Methods
+  # =========================================
+
+  
+  def get_advertisement_string(self):
+    #  UdpLossShim is a one-sided shim, so it doesn't advertise itself
+    return self.get_next_shim_layer().get_advertisement_string()
+
+
+  def copy(self):
+    return UdpLossShim(self.shim_context['shim_stack'].copy(), self.shim_context['optional_args'])
+

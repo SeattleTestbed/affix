@@ -1,0 +1,312 @@
+"""
+<Program>
+  udp_proxy.repy
+
+<Author>
+  Steven Portzer
+
+<Purpose>
+  Proxy server for non-shim-compatible applications using udp.
+
+"""
+
+USAGE = "Usage: python udp_proxy.py server_ip server_port listening_ip listening_port shim_port shim_string"
+
+dy_import_module_symbols('shimstackinterface')
+dy_import_module_symbols('random')
+
+# Number of seconds to sleep when encountering the SocketWouldBlockError.
+SLEEP_TIME = 0.01
+
+# List of shim stacks for connections with shims. See the documentation of
+# start_server() for how ports are assigned to each of the shim stacks.
+SHIM_STACK_LIST = []
+
+# How we are going to send a new outgoing message.
+outgoing_ip = None
+outgoing_port = None
+
+# How we listen for incoming messages.
+incoming_ip = None
+incoming_port = None
+
+# Which of the port above should use shims.
+shim_port = None
+
+
+
+
+def start_server():
+  """
+  <Purpose>
+    Launches a server that continuously waits for incoming messages.
+    Once a message is received, it forwards it to the outgoing location.
+
+  <Arguments>
+    None
+
+  <Side Effects>
+    Sends and receives UDP datagrams.
+
+  <Exception>
+    None
+
+  <Return>
+    None
+
+  """
+
+  if len(SHIM_STACK_LIST) == 0:
+    log("No shim stacks provided for proxy!\n")
+    exitall()
+
+  # Begin listening for messages. We use several shim stacks in parallel for
+  # both the shim side of the proxy and the non-shim side to facilitate the bulk
+  # testing of several shims and applications which use multiple consecutive udp
+  # ports. For shim stack with index i, we listen on port p + i, where p is the
+  # main listen port specified in the command line.
+  for index in xrange(len(SHIM_STACK_LIST)):
+    shim_stack_str = SHIM_STACK_LIST[index]
+
+    if shim_port == incoming_port:
+      incoming_shim_obj = ShimStackInterface(shim_stack_str, incoming_ip)
+      udp_server_socket = incoming_shim_obj.listenformessage(incoming_ip,
+                                                incoming_port + index)
+      outgoing_shim_obj = None
+    else:
+      udp_server_socket = listenformessage(incoming_ip, incoming_port + index)
+      outgoing_shim_obj = ShimStackInterface(shim_stack_str, incoming_ip)
+
+    forwarder_function = create_forwarder(udp_server_socket, outgoing_shim_obj, index)
+
+    createthread(forwarder_function)
+
+    if shim_port == incoming_port:
+      log("Listening on port %d with shim string '%s'\n" %
+          (incoming_port + index, shim_stack_str))
+    else:
+      log("Listening on port %d with no shims\n" % (incoming_port + index))
+
+  log('Ready to receive messages\n')
+
+
+
+
+def create_forwarder(udp_server_socket, outgoing_shim_obj, index):
+  """
+  <Purpose>
+    Returns a function for forwarding UDP messages.
+
+  <Arguments>
+    udp_server_socket:
+      A udp server socket for receiveing messages to forward.
+    outgoing_shim_obj:
+      A shim stack interface for sending forwarded messages, or None to use
+      no shim on the outgoing connection.
+    index:
+      The index in SHIM_STACK_LIST for this shim.
+
+  <Side Effects>
+    None
+
+  <Exception>
+    None
+
+  <Return>
+    A function that receives messages from udp_server_socket and forwards these
+    messages to outgoing_shim_obj on port remote_port. This function will not
+    return, so it should most likely be run in a new thread.
+
+  """
+
+  def forwarder_function():
+    address_mapping = {}
+
+    # Wait for a message to be received on the listening port and forward it.
+    while True:
+
+      try:
+        (remoteip, remoteport, message) = udp_server_socket.getmessage()
+
+      except SocketWouldBlockError:
+        sleep(SLEEP_TIME)
+
+      else:
+        # Forward the message to the outgoing location.
+        if (remoteip, remoteport) in address_mapping:
+          local_port = address_mapping[(remoteip, remoteport)]
+        else:
+          local_port = random_randint(10000, 59999)
+
+        while True:
+
+          try:
+            if outgoing_shim_obj is None:
+              sendmessage(outgoing_ip, outgoing_port + index,
+                          message, incoming_ip, local_port)
+            else:
+              outgoing_shim_obj.sendmessage(outgoing_ip, outgoing_port + index,
+                                            message, incoming_ip, local_port)
+
+            # If this is a new mapping, create a forwarder to transfer
+            # any reply messages.
+            if (remoteip, remoteport) not in address_mapping:
+              address_mapping[(remoteip, remoteport)] = local_port
+
+              if outgoing_shim_obj is None:
+                reply_socket = listenformessage(incoming_ip, local_port)
+                reply_shim_obj = ShimStackInterface(SHIM_STACK_LIST[index], incoming_ip)
+              else:
+                reply_socket = outgoing_shim_obj.listenformessage(incoming_ip, local_port)
+                reply_shim_obj = None
+
+              forwarder_function = create_reply_forwarder(reply_socket, reply_shim_obj,
+                                                          index, remoteip, remoteport)
+
+              createthread(forwarder_function)
+
+              log("Receiving messages from %s:%d\n" % (remoteip, remoteport))
+
+            break
+
+          except SocketWouldBlockError:
+            sleep(SLEEP_TIME)
+
+          # Keep trying until we find an allowable random local port
+          except (DuplicateTupleError, ResourceForbiddenError), err:
+            log('Local port', local_port, 'is not allowed; trying another one:',
+                repr(err), err, '\n')
+            local_port = random_randint(10000, 59999)
+
+
+  return forwarder_function
+
+
+
+
+def create_reply_forwarder(udp_server_socket, outgoing_shim_obj, index, remoteip, remoteport):
+  """
+  <Purpose>
+    Returns a function for forwarding UDP reply messages.
+
+  <Arguments>
+    udp_server_socket:
+      A udp server socket for receiveing messages to forward.
+    outgoing_shim_obj:
+      A shim stack interface for sending forwarded messages, or None to use
+      no shim on the outgoing connection.
+    index:
+      The index in SHIM_STACK_LIST for this shim.
+    remoteip:
+      IP to send replies to.
+    remoteport:
+      Port to send replies to.
+
+  <Side Effects>
+    None
+
+  <Exception>
+    None
+
+  <Return>
+    A function that receives messages from udp_server_socket and forwards these
+    messages to outgoing_shim_obj on port remote_port. This function will not
+    return, so it should most likely be run in a new thread.
+
+  """
+
+  def forwarder_function():
+
+    # Wait for a message to be received on the listening port and forward it.
+    while True:
+
+      try:
+        (_, _, message) = udp_server_socket.getmessage()
+
+      except SocketWouldBlockError:
+        sleep(SLEEP_TIME)
+
+      else:
+
+        while True:
+
+          try:
+            if outgoing_shim_obj is None:
+              sendmessage(remoteip, remoteport, message,
+                          incoming_ip, incoming_port + index)
+            else:
+              outgoing_shim_obj.sendmessage(remoteip, remoteport, message,
+                                            incoming_ip, incoming_port + index)
+              
+            break
+
+          except SocketWouldBlockError:
+            sleep(SLEEP_TIME)
+
+
+  return forwarder_function
+
+
+
+
+def main():
+  """
+  <Purpose>
+
+    Parses the command-line arguments. Listens for incoming messages.
+
+  <Arguments>
+    None.
+
+  <Exceptions>
+    None.
+
+  <Return>
+    None.
+
+  """
+
+  global outgoing_ip
+  global incoming_ip
+  global outgoing_port
+  global incoming_port
+  global shim_port
+
+  if len(callargs) < 6:
+    log(USAGE)
+    return
+
+  try:
+
+    outgoing_ip = callargs[0]
+    outgoing_port = int(callargs[1])
+    incoming_ip = callargs[2]
+    incoming_port = int(callargs[3])
+    shim_port = int(callargs[4])
+
+    # The shim port must be either the outgoing or incoming port.
+    if shim_port not in (outgoing_port, incoming_port):
+      raise ValueError('The shim port must be either the server or listening port.')
+
+    SHIM_STACK_LIST.extend(callargs[5:])
+
+  except ValueError, err:
+    
+    err_info = 'Bad command-line arguments: ' + str(err) + '\n'
+    err_info += USAGE
+    log(err_info)
+
+    return
+
+  start_server()
+
+  # If we let the main thread die, then Ctrl+C won't kill the program.
+  while True:
+    sleep(600)
+
+
+
+
+if callfunc == 'initialize':
+  main()
+

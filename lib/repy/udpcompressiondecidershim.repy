@@ -1,0 +1,119 @@
+#!python
+"""
+<Program Name>
+  udpcompressiondecidershim.repy
+
+<Author>
+  Steven Portzer
+
+<Date Started>
+  December 10, 2011
+
+<Purpose>
+  Loads compression for UDP messages based on throughput and drop rate.
+
+"""
+
+dy_import_module_symbols('udp_branching_lib')
+
+
+
+
+class UdpCompressionDeciderShim(BaseUdpDeciderShim):
+
+  # Use compression if throughput in bytes per second exceeds this threshold.
+  _DEFAULT_THROUGHPUT_THRESHOLD = 2**16
+
+  # Use compression if the message drop rate exceeds this threshold.
+  _DEFAULT_DROP_RATE_THRESHOLD = 0.1
+
+
+
+  _SHIM_NAME = "UdpCompressionDeciderShim"
+
+  # Shim stacks this decider shim chooses between.
+  _shim_string_list = ["(NoopShim)", "(CompressionShim)"]
+
+
+  def __init__(self, shim_stack, optional_args=None):
+    """
+    If the first optional argument is provided it will be used as the
+    throughput threshold above which compression is used.
+    If a second optional argument is provided it will be used as the
+    drop rate threshold above which compression is used.
+    """
+
+    BaseUdpDeciderShim.__init__(self, shim_stack, optional_args)
+
+    if len(optional_args) > 2:
+      raise ShimArgumentError("UdpCompressionDeciderShim takes at most 2 optional arguments.")
+
+    if optional_args:
+      if optional_args[0] == "None":
+        self._throughput_threshold = None
+      else:
+        try:
+          self._throughput_threshold = int(optional_args[0])
+        except ValueError, err:
+          raise ShimArgumentError("Bad optional args. " + optional_args[0] + " is not an integer.")
+    else:
+      self._throughput_threshold = self._DEFAULT_THROUGHPUT_THRESHOLD
+
+    if optional_args and len(optional_args) == 1:
+      if optional_args[1] == "None":
+        self._drop_rate_threshold = None
+      else:
+        try:
+          self._drop_rate_threshold = float(optional_args[1])
+        except ValueError, err:
+          raise ShimArgumentError("Bad optional args. " + optional_args[1] + " is not a float.")
+    else:
+      self._drop_rate_threshold = self._DEFAULT_DROP_RATE_THRESHOLD
+
+
+
+  def _get_next_stack_id(self, statistics_list, has_remote_stats, time_elapsed, state_context):
+    if self._throughput_threshold is not None:
+      throughput = (statistics_list[0]['bytes_sent'] +
+                    statistics_list[1]['bytes_sent']) / time_elapsed
+
+      # Use compression if throughput exceeds threshold.
+      if throughput > self._throughput_threshold:
+        return 1
+
+    if self._drop_rate_threshold is not None:
+      # If we didn't get statistics from the server, then we'll assume
+      # the request or response was dropped and apply compression to
+      # compensate.
+      if not has_remote_stats:
+        return 1
+
+      messages_sent = (statistics_list[0]['messages_sent'] +
+                       statistics_list[1]['messages_sent'])
+      messages_received = (statistics_list[0]['messages_received'] +
+                           statistics_list[1]['messages_received'])
+
+      # Use compression if drop rate exceeds threshold. The messages
+      # sent and received statistics may not be perfectly synchronized,
+      # so increase the messages received to allow for noise.
+      if messages_sent > 0:
+        drop_rate = 1.0 - float(messages_received + 1) / messages_sent
+        if drop_rate > self._drop_rate_threshold:
+          return 1
+
+    # Else, don't use compression.
+    return 0
+
+
+  def copy(self):
+    shim_stack_copy = self.shim_context['shim_stack'].copy()
+    optional_args = self.shim_context['optional_args']
+
+    return UdpCompressionDeciderShim(shim_stack_copy, optional_args)
+
+
+  def get_advertisement_string(self):
+    shim_string = "(UdpCompressionDeciderShim," + \
+                  str(self._throughput_threshold) + "," + \
+                  str(self._drop_rate_threshold) + ")"
+    return shim_string + self.get_next_shim_layer().get_advertisement_string()

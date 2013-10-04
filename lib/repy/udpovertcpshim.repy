@@ -1,0 +1,450 @@
+#!python
+"""
+
+<Program Name>
+  udpovertcpshim.repy
+
+<Author>
+  Fraida Fund
+  ffund01@students.poly.edu
+
+<Date Started>
+  6 Oct 2011
+
+<Purpose>
+  A shim that sends UDP datagrams over a TCP connection. This allows us to use 
+  both UDP and TCP shims on any UDP application.
+
+TODO:
+  Clean up sockets that haven't been used in a while, and some other things (see TODOs)
+
+
+"""
+
+dy_import_module_symbols("shim_exceptions")
+dy_import_module_symbols("random")
+
+_SLEEP_TIME = 0.01
+_CLEANUP_TIME = 60
+_TCP_TIMEOUT = 5
+_RECV_BLOCK_SIZE = 2 ** 11
+
+
+class UdpOverTcpSocket():
+
+
+
+  def __init__(self, local_dict, localkey):
+    """
+    Creates a new UdpOverTcpSocket. 
+   
+    """
+
+    self.udp_over_tcp_context = local_dict
+    self.localkey = localkey
+
+
+
+  def getmessage(self):
+    """
+    Read from buffers of all UdpOverTcp sockets until we find one that has a message
+
+    Return a (remote_ip, remote_port, message) tuple, or SocketWouldBlockError
+    if there are no messages.
+
+    N.B.: This doesn't give good performance when there are multiple simultaneous 
+    flows, since it will always give preference to the first one on the list.
+    """
+
+    # TODO: I assume that all the sockets in the socket_list belong to this UdpOverTcpSocket,
+    # when in fact they could belong to other listening UdpOverTcpSockets
+
+    socket_list = []
+    socket_list.extend(self.udp_over_tcp_context['socket_list'])
+
+    if len(socket_list) == 0:
+      raise SocketWouldBlockError()
+
+    # Find the TCP flow(s) corresponding to this connection
+    # Read from buffer as long as there's something to read
+    for port, ip, sockobj in socket_list:
+
+      self.udp_over_tcp_context['recv_lock'][repr(sockobj)].acquire(True)
+      try:
+
+        port_str, length_str, recv_buf = self.udp_over_tcp_context['recv_buf'][repr(sockobj)].split(",", 2)
+        remote_port = int(port_str)
+        block_length = int(length_str)
+
+        if len(recv_buf) >= block_length:
+          self.udp_over_tcp_context['recv_buf'][repr(sockobj)] = recv_buf[block_length : ]
+          block_body = recv_buf[ : block_length]
+
+        return (ip, remote_port, block_body)
+
+      except ValueError:
+        pass
+
+      finally:
+        self.udp_over_tcp_context['recv_lock'][repr(sockobj)].release()
+
+    # Raise SocketWouldBlockError if all the receive buffers are empty
+    raise SocketWouldBlockError()
+
+
+
+
+  def close(self):
+    """
+    Closes the listening UdpServerSocket.
+
+    """
+
+    udpserversocket = self.udp_over_tcp_context['udp_server_socket_dict'][self.local_key]
+    udpserversocket.close() 
+    del self.udp_over_tcp_context['udp_server_socket_dict'][self.local_key]
+
+    tcpserversocket = self.udp_over_tcp_context['udp_over_tcp_socket_dictionary'][self.local_key]
+    socket_closed = tcpserversocket.close() 
+    del self.udp_over_tcp_context['udp_over_tcp_socket_dictionary'][self.local_key]
+
+    return socket_closed
+		
+
+
+
+
+
+class UdpOverTcpShim(BaseShim):
+
+  # How many different TCP ports to try before giving up
+  MAX_PORT_TRIES = 4
+
+
+  def __init__(self, shim_stack=ShimStack(), optional_args=None):
+    """
+    <Purpose>
+      Initialize the UdpOverTcpShim.
+ 
+    <Arguments>
+      shim_stack - A shim stack that will be used as the stack
+          beneath us.
+
+      optional_args - Any optional args that this shim or any of
+          the shims below us might use.
+
+    <Side Effects>
+      None
+
+    <Exceptions>
+      None
+    """
+
+    BaseShim.__init__(self, shim_stack, optional_args)
+
+    if optional_args:
+      assert(isinstance(optional_args, list)), "Optional arg must be a list."
+      assert(len(optional_args) == 1), "Optional arg must contain at most one value."
+
+      try:
+        self.tcpport = int(optional_args[0])
+      except ValueError:
+        raise ShimArgumentError("Optional arg provided is not a valid integer")
+
+      assert(self.tcpport <= 0 or self.tcpport > 65535), "Optional arg must be a valid port number."
+
+    else:
+      self.tcpport = None
+
+    # Initialize dictionaries and list
+    self.udp_over_tcp_context = {}
+    self.udp_over_tcp_context['udp_server_socket_dict'] = {}
+    self.udp_over_tcp_context['udp_over_tcp_socket_dictionary'] = {}
+    self.udp_over_tcp_context['flow_dictionary'] = {}
+    self.udp_over_tcp_context['recv_buf'] = {}
+    self.udp_over_tcp_context['recv_lock'] = {}
+    self.udp_over_tcp_context['socket_list'] = []
+    self.udp_over_tcp_context['active_socket_list'] = []
+
+
+
+
+  def listenformessage(self, localip, localport):
+    """
+    Create a UdpOverTcpSocket for this ip:port combination, and put it in the 
+    listening state.
+
+    Launch threads to handle incoming connections and receive messages into a 
+    buffer for this UdpOverTcpSocket.
+
+    """
+
+    local_key = str(localip)+':'+str(localport)
+
+    # Ensure no other UDP sockets are using this IP and port.
+    udpserversock = self.get_next_shim_layer().listenformessage(localip, localport)
+    self.udp_over_tcp_context['udp_server_socket_dict'][local_key] = udpserversock
+
+    if self.tcpport:
+      localport = self.tcpport
+
+    for i in xrange(self.MAX_PORT_TRIES):
+
+      try:
+        tcpserversocket = self.get_next_shim_layer().listenforconnection(localip, localport)
+
+      except (DuplicateTupleError, AlreadyListeningError), err:
+        # Choose a random port out of the available ports.
+        (resource_list_limit, resource_list_usage, stoptimes) = getresources()
+        available_ports = list(resource_list_limit['connport'] - resource_list_usage['connport'])
+        if not available_ports:
+          raise err
+        localport = available_ports[random_randint(0, len(available_ports)-1)]
+
+      else:
+        self.tcpport = localport
+
+        self.udp_over_tcp_context['udp_over_tcp_socket_dictionary'][local_key] = tcpserversocket
+
+        # Launch thread to handle incoming connections
+        def _handle_wrapper():
+          self._handle_incoming_connection(tcpserversocket)
+        createthread(_handle_wrapper)  
+
+        # Launch thread to recv into buffer
+        def _recv_wrapper():
+          self._recv_into_buffer(tcpserversocket)
+        createthread(_recv_wrapper)  
+
+        return UdpOverTcpSocket(self.udp_over_tcp_context, local_key)
+
+    raise AlreadyListeningError("Failed to find a port to listen on")
+
+
+
+
+  def _handle_incoming_connection(self,tcpserversocket):
+    """
+    Listen for incoming TCP connections and initialize things we'll need 
+    for each new connection. 
+
+    This runs in its own thread to handles incoming connections in the background
+    all the time.
+
+    """
+
+
+    while True:
+
+      try:
+        (remote_ip, remote_port, repy_socket) = self.get_next_shim_layer().tcpserversocket_getconnection(tcpserversocket)
+
+      except SocketWouldBlockError:
+        sleep(_SLEEP_TIME)
+
+      except SocketClosedLocal:
+        # Call close() to clean up
+        tcpserversocket.close()
+        return
+
+      else:
+        remote_key = str(remote_ip)+':'+str(remote_port)
+
+        # TODO: I assume that all the sockets in the socket_list belong to this UdpOverTcpSocket,
+        # when in fact they could belong to other listening UdpOverTcpSockets
+
+        # If this remote key is already in 'flow_dictionary' then we 
+        # need to get rid of the old socket before we use the new one
+        if remote_key in self.udp_over_tcp_context['flow_dictionary']:
+          old_socket = self.udp_over_tcp_context['flow_dictionary'][remote_key]
+          self.udp_over_tcp_context['socket_list'].remove((destport, destip, old_socket))
+          self.udp_over_tcp_context['recv_lock'][repr(old_socket)].acquire(True)
+          del self.udp_over_tcp_context['recv_buf'][repr(old_socket)]
+          self.udp_over_tcp_context['recv_lock'][repr(old_socket)].release()
+          del self.udp_over_tcp_context['recv_lock'][repr(old_socket)]
+          del self.udp_over_tcp_context['flow_dictionary'][repr(old_socket)]
+
+        # This order is significant. We don't want other threads to try 
+        # and use things we haven't initialized yet
+        self.udp_over_tcp_context['flow_dictionary'][remote_key] =  repy_socket
+        self.udp_over_tcp_context['recv_buf'][repr(repy_socket)] = ""
+        self.udp_over_tcp_context['recv_lock'][repr(repy_socket)] = createlock()
+        self.udp_over_tcp_context['socket_list'].append((remote_port, remote_ip, repy_socket))
+        self.udp_over_tcp_context['active_socket_list'].append((remote_port, remote_ip, repy_socket))
+
+
+
+  def _recv_into_buffer(self,tcpserversocket):
+    """
+    Iterate over socket_list for this server socket and read incoming messages 
+    into receive buffers for each socket.
+
+    """
+
+    # TODO: I assume that all the sockets in the socket_list belong to this UdpOverTcpSocket,
+    # when in fact they could belong to other listening UdpOverTcpSockets
+
+    while True:
+
+      # Make a local copy of the list, so it won't change while we iterate over it
+      socket_list = []
+      socket_list.extend(self.udp_over_tcp_context['active_socket_list'])
+
+      made_progress = False
+
+      for port, ip, sockobj in socket_list:
+
+        try:
+          self.udp_over_tcp_context['recv_lock'][repr(sockobj)].acquire(True)
+          # If the buffer is large, then it has stale data and we'll discard it 
+          # (65527 is the maximum size of a UDP packet payload in IPv6) 
+          if len(self.udp_over_tcp_context['recv_buf'][repr(sockobj)]) > 65527:
+            self.udp_over_tcp_context['recv_buf'][repr(sockobj)]= ""
+          self.udp_over_tcp_context['recv_buf'][repr(sockobj)] += self.get_next_shim_layer().socket_recv(sockobj, _RECV_BLOCK_SIZE)
+          made_progress = True
+ 
+        # No data to read from socket.
+        except SocketWouldBlockError:
+          pass
+
+        except (SocketClosedLocal,SocketClosedRemote):
+          sockobj.close()
+          del self.udp_over_tcp_context['flow_dictionary'][str(ip)+':'+str(port)]
+          # del self.udp_over_tcp_context['recv_buf'][repr(sockobj)]
+          self.udp_over_tcp_context['active_socket_list'].remove((port, ip, sockobj))
+
+        finally:
+          self.udp_over_tcp_context['recv_lock'][repr(sockobj)].release()
+
+      if not made_progress:
+        sleep(_SLEEP_TIME)
+
+      # When we finish going through the list once, we make another copy (in case 
+      # new sockets have been added) and repeat
+
+
+
+
+  def sendmessage(self, destip, destport, message, localip, localport):
+    """
+    Send a message to a remote ip:port (with a header indicating its length)
+    to a remote destination.
+
+    Use an existing TCP connection to the remote ip:port if it exists, otherwise 
+    create a new one.
+
+    """
+    remote_key = str(destip)+':'+str(destport)
+    sent_bytes = 0
+
+    # We add a header indicating length of the message and local port to the front
+    msg_header = str(localport) + ',' + str(len(message)) + ','
+    msg_block = msg_header + message
+
+    if self.tcpport:
+      destport = self.tcpport
+
+    # Open a TCP connection for this flow if there is not one already
+    if remote_key not in self.udp_over_tcp_context['flow_dictionary']:
+
+      for i in xrange(self.MAX_PORT_TRIES):
+        try:
+          sockobj = self.get_next_shim_layer().openconnection(destip, destport, localip, localport, _TCP_TIMEOUT)
+        except (TimeoutError, ConnectionRefusedError):
+          return sent_bytes
+        except (DuplicateTupleError, AlreadyListeningError), err:
+          # Choose a random port out of the available ports.
+          (resource_list_limit, resource_list_usage, stoptimes) = getresources()
+          available_ports = list(resource_list_limit['connport'] - resource_list_usage['connport'])
+          if not available_ports:
+            raise err
+          localport = available_ports[random_randint(0, len(available_ports)-1)]
+        else:
+          break
+
+      else:
+        raise AlreadyListeningError("Failed to find a port to connect from")
+
+      self.udp_over_tcp_context['flow_dictionary'][remote_key] = sockobj
+      self.udp_over_tcp_context['recv_buf'][repr(sockobj)] = ""
+      self.udp_over_tcp_context['recv_lock'][repr(sockobj)] = createlock()
+      self.udp_over_tcp_context['socket_list'].append((destport, destip, sockobj))
+      self.udp_over_tcp_context['active_socket_list'].append((destport, destip, sockobj))
+
+    # Otherwise, get the socket corresponding to this ip:port
+    else: 
+      sockobj = self.udp_over_tcp_context['flow_dictionary'][remote_key]
+
+    try:
+      sent_bytes += self.get_next_shim_layer().socket_send(sockobj, msg_block)
+    except SocketWouldBlockError:
+      return sent_bytes
+    except SocketClosedLocal:  
+      # Remove this flow from flow dictionary, so that we'll attempt to reconnect if we need to 
+      # This order is important!
+      del self.udp_over_tcp_context['flow_dictionary'][remote_key]
+      self.udp_over_tcp_context['socket_list'].remove((destport, destip, sockobj))
+      self.udp_over_tcp_context['recv_lock'][repr(sockobj)].acquire(True)
+      del self.udp_over_tcp_context['recv_buf'][repr(sockobj)]
+      self.udp_over_tcp_context['recv_lock'][repr(sockobj)].release()
+      del self.udp_over_tcp_context['recv_lock'][repr(sockobj)]
+      return sent_bytes
+    except SocketClosedRemote:
+      # Remove this flow from flow dictionary, so that we'll attempt to reconnect if we need to 
+      # This order is important!
+      sockobj.close()
+      del self.udp_over_tcp_context['flow_dictionary'][remote_key]
+      self.udp_over_tcp_context['socket_list'].remove((destport, destip, sockobj))
+      self.udp_over_tcp_context['recv_lock'][repr(sockobj)].acquire(True)
+      del self.udp_over_tcp_context['recv_buf'][repr(sockobj)]
+      self.udp_over_tcp_context['recv_lock'][repr(sockobj)].release()
+      del self.udp_over_tcp_context['recv_lock'][repr(sockobj)]
+      return sent_bytes
+
+    return sent_bytes
+
+
+
+
+
+  def udpserversocket_getmessage(self, udpserversocket):
+    """
+    Calls getmessage on UdpOverTcpSocket
+    """
+    return udpserversocket.getmessage()
+
+
+
+
+
+  def udpserversocket_close(self, udpserversocket):
+    """
+    Calls close on UdpOverTcpSocket
+    """
+    return udpserversocket.close()
+
+
+
+
+  # =========================================
+  # Required Public Methods
+  # =========================================
+
+
+
+  def copy(self):
+    shim_stack_copy = self.shim_context['shim_stack'].copy()
+    optional_args_copy = self.shim_context['optional_args']
+    my_copy = UdpOverTcpShim(shim_stack_copy, optional_args_copy)
+    my_copy.tcpport = self.tcpport
+    return my_copy
+
+
+
+
+  def get_advertisement_string(self):
+    if self.tcpport:
+      shim_name = '(UdpOverTcpShim,' + str(self.tcpport) + ')'
+    else:
+      shim_name = '(UdpOverTcpShim)'
+    return shim_name + self.get_next_shim_layer().get_advertisement_string()

@@ -1,0 +1,611 @@
+"""
+<Program Name>
+  mobilityshim.repy
+
+<Author>
+  Danny Y. Huang (yh1@cs.williams.edu)
+  Steven Portzer
+
+<Date Started>
+  May 2, 2011
+
+<Purpose>
+  Recovers from disconnection by trying to reconnect if we lose
+  connectivity and masking the disconnection from the layer above us.
+  Handles disconnections due to the client changing IP by reconnecting
+  from the new IP and disconnections due to the server changing IP by
+  listening on the new IP and waiting for the client to reconnect.
+  Server mobility is only handled correctly if the application is
+  listening on a Zenodotus name through the CoordinationShim and the
+  client is connecting to that same hostname.
+
+"""
+
+dy_import_module_symbols('shim_exceptions')
+dy_import_module_symbols('mobile_socket')
+dy_import_module_symbols("random")
+dy_import_module_symbols("session")
+
+
+
+
+
+class MobileTCPServerSocketWrapper:
+  """
+  Futher wraps MobileTCPServerSocket by keeping track of whether the
+  socket is closed or not so that reusing server sockets dosn't cause
+  old server sockets to magically become open again.
+  
+  """
+
+  def __init__(self, mobiletcpserversocket):
+    self._server_socket = mobiletcpserversocket
+    self._server_socket_lock = createlock()
+
+  def getconnection(self):
+    server_socket = self._server_socket
+    if server_socket is None:
+      raise SocketClosedLocal("The socket has been closed!")
+    else:
+      return server_socket.getconnection()
+
+  def close(self):
+    self._server_socket_lock.acquire(True)
+    if self._server_socket is None:
+      self._server_socket_lock.release()
+      return False
+    else:
+      server_socket = self._server_socket
+      self._server_socket = None
+      self._server_socket_lock.release()
+      server_socket.close()
+      return True
+
+
+
+
+
+class MobileTCPServerSocket:
+  """
+  Wrapper for ShimTCPServerSocket.
+
+  """
+
+  # How often to check for new connections.
+  _GETCONNECTION_INTERVAL = 0.1
+
+  def __init__(self, shimtcpserversocket, listen_ip, listen_port):
+    """
+    Constructor. Arguments:
+
+    shimtcpserversocket - the ShimTCPServerSocket to wrap around.
+    listen_ip - the IP address to which the listener was initially bound.
+    listen_port - the bound port.
+
+    """
+    # References to the internal state of the TCP server socket.
+    self._socket = shimtcpserversocket._socket
+    self._shim_object = shimtcpserversocket._shim_object
+    self._next_shim = self._shim_object.get_next_shim_layer()
+
+    # IP and port on which the initial listener was created.
+    self._listen_ip = listen_ip
+    self._listen_port = listen_port
+
+    # Maps the client ID to the corresponding MobileSocket
+    # object. Used to retrieve broken yet active connections.
+    self._mobile_sock_dict = {}
+
+    # Keeps track of the socket's current state.
+    self._closed = False
+    self._listener_loop_active = True
+
+    # List of (remote ip, remote port, socket object) tuples that haven't
+    # yet been returned by getconnection()
+    self._new_connection_tuples = []
+
+    # Prevent concurrent access to state.
+    self._server_socket_lock = createlock()
+
+    createthread(self._connection_listener_thread)
+
+
+
+  def _connection_listener_thread(self):
+    """
+    Periodical calls getconnection to get new connections and update
+    existing sockets that are being reconnected.
+
+    """
+    while True:
+
+      sleep(self._GETCONNECTION_INTERVAL)
+
+      # If the server socket and all TCP sockets it's created are closed,
+      # then stop listening.
+      self._server_socket_lock.acquire(True)
+      if self._closed:
+        for socket in self._mobile_sock_dict.values():
+          if not socket.is_closed():
+            break
+        else:
+          # Exit Loop
+          break
+
+      self._server_socket_lock.release()
+
+      # If our IP has changed then update the IP we are listening on.
+      self._check_ip_change()
+
+      try:
+        # The internal _socket object may have been updated, if the IP changed and
+        # new listener started successfully.
+        ret_tuple = self._next_shim.tcpserversocket_getconnection(self._socket)
+        (remote_ip, remote_port, repy_socket) = ret_tuple
+        client_id = remote_ip + ':' + str(remote_port)
+      except Exception:
+        continue
+
+      debug_log('\n\n\n', '*' * 80, '\n', show=True)
+      debug_log('zzzz getconnection: Got connection tutple:', ret_tuple, '\n', show=True)
+
+      try:
+        message = session_recvmessage(repy_socket)
+
+        if message.startswith("N"):
+          # If the server socket has been closed, then don't accept new
+          # connections.
+          if self._closed:
+            session_sendmessage(repy_socket, "D")
+            repy_socket.close()
+            continue
+
+          # It's a new connection, so generate and send to the client a
+          # connection ID for it to use when reconnecting.
+          connection_id = None
+          while connection_id is None or connection_id in self._mobile_sock_dict:
+            connection_id = random_randombytes(8)
+
+          session_sendmessage(repy_socket, "N" + connection_id)
+          shim_sock = ShimSocket(repy_socket, self._shim_object)
+
+          # This socket may have been closed while we were waiting
+          # to establish the connection. Otherwise, add the new
+          # connection tuple to the list of unreturned connections
+          # so getconnection() can return it later.
+          mobile_sock = MobileSocket(shim_sock)
+          self._server_socket_lock.acquire(True)
+          if self._closed:
+            self._server_socket_lock.release()
+            mobile_sock.close()
+          else:
+            self._mobile_sock_dict[connection_id] = mobile_sock
+            self._new_connection_tuples.append((remote_ip, remote_port, mobile_sock))
+            self._server_socket_lock.release()
+            debug_log('zzzz getconnection: new connection from', client_id, '\n', show=True)
+
+        elif message.startswith("R"):
+          # It's a reconnection attempt. We need to make sure the connection
+          # ID is valid before acknowledging the reconnection attempt.
+          connection_id = message[1:]
+
+          if connection_id in self._mobile_sock_dict.keys():
+            mobile_sock = self._mobile_sock_dict[connection_id]
+
+            # Update the socket object reference if the mobile socket has not been
+            # closed yet. Finally, we pretend that we didn't receive a new connection.
+            if not mobile_sock.is_closed():
+              mobile_sock.replace_socket(repy_socket)
+              debug_log('zzzz getconnection: old connection from', client_id, '\n', show=True)
+              continue
+
+          # We can't reconnect if we don't have an open mobile socket
+          # to reconnect with, so tell the client we are disconnecting.
+          # For implementation related reasons, the easiest way to do
+          # this is to create and immediately close a new mobile socket.
+          shim_sock = ShimSocket(repy_socket, self._shim_object)
+          mobile_sock = MobileSocket(shim_sock)
+          mobile_sock.close()
+
+      except Exception, err:
+        try:
+          repy_socket.close()
+        except Exception:
+          pass
+        debug_log('zzzz getconnection failed:', repr(err), err, '\n', show=True)
+
+    self._listener_loop_active = False
+    self._next_shim.tcpserversocket_close(self._socket)
+    self._server_socket_lock.release()
+    debug_log('zzzz connection listener loop exits\n', show=True)
+
+
+
+  def _check_ip_change(self):
+    """
+    Helper method for getconnection(). Checks if IP has changed. If it has,
+    starts a new listener and updates the the original TCP server socket to
+    reference the new one.
+
+    """
+    current_ip = _check_current_ip()
+    if current_ip is None or current_ip == self._listen_ip:
+      return
+
+    # Start listening on the new IP, ignore network errors because connectivity
+    # may have not been re-established yet.
+    try:
+      new_tcpserversocket = self._next_shim.listenforconnection(self._listen_ip, self._listen_port)
+    except NetworkError:
+      return
+
+    self._next_shim.tcpserversocket_close(self._socket)
+
+    # Update the socket reference.
+    self._listen_ip = current_ip
+    self._socket = new_tcpserversocket
+
+    debug_log('\n\n\n', '*' * 80, '\n', show=True)
+    debug_log('zzzz new listener on', self._listen_ip, ':', self._listen_port, '\n', show=True)
+
+
+
+  def getconnection(self):
+    """ Checks for new connections that haven't been returned yet. """
+
+    self._server_socket_lock.acquire(True)
+
+    try:
+      if self._closed:
+        raise SocketClosedLocal("The socket has been closed!")
+
+      while self._new_connection_tuples:
+        # Get the next unreturned socket.
+        return_tuple = self._new_connection_tuples.pop(0)
+        (remote_ip, remote_port, mobile_socket) = return_tuple
+        # It the socket has been closed remotely since the connection
+        # was initialized, don't bother returning it.
+        if mobile_socket.is_closed():
+          continue
+        return return_tuple
+
+      raise SocketWouldBlockError("No connections currently available!")
+
+    finally:
+      self._server_socket_lock.release()
+
+
+
+  def close(self):
+    self._server_socket_lock.acquire(True)
+
+    if self._closed:
+      self._server_socket_lock.release()
+      return False
+
+    else:
+      self._closed = True
+      connection_tuples = self._new_connection_tuples
+      self._new_connection_tuples = []
+      self._server_socket_lock.release()
+
+      # If we are closing the socket, then close any unreturned sockets.
+      for remote_ip, remote_port, socket in connection_tuples:
+        try:
+          socket.close()
+        except Exception:
+          pass
+
+      return True
+
+
+
+
+
+
+class MobileUDPServerSocket:
+  """
+  Wrapper for ShimUDPServerSocket.
+
+  """
+
+  def __init__(self, shimudpserversocket, listen_ip, listen_port):
+    """
+    Constructor. Arguments:
+
+    shimudpserversocket - the ShimUDPServerSocket to wrap around.
+    listen_ip - the IP address to which the listener was initially bound.
+    listen_port - the bound port.
+
+    """
+    # References to the internal state of the TCP server socket.
+    self._socket = shimudpserversocket._socket
+    self._shim_object = shimudpserversocket._shim_object
+    self._next_shim = self._shim_object.get_next_shim_layer()
+
+    # IP and port on which the initial listener was created.
+    self._listen_ip = listen_ip
+    self._listen_port = listen_port
+
+    # Messages that haven't we are holding on to because we received
+    # them on a server socket that was closed when we changed IP.
+    self._unreturned_message_tuples = []
+
+    # Keeps track of the socket's current state.
+    self._closed = False
+
+    # Prevent concurrent access to state.
+    self._server_socket_lock = createlock()
+
+
+
+  def getmessage(self):
+    """ Checks for new messages. """
+
+    if self._closed:
+      raise SocketClosedLocal("The socket has been closed!")
+
+    # If our IP has changed then update the IP we are listening on. This
+    # check will only occur if the application calls getmessage, but
+    # that shouldn't be an issue.
+    self._check_ip_change()
+
+    self._server_socket_lock.acquire(True)
+
+    # Check if we have any unreturned messages from previous server
+    # sockets.
+    if self._unreturned_message_tuples:
+      return self._unreturned_message_tuples.pop(0)
+
+    self._server_socket_lock.release()
+
+    return self._next_shim.udpserversocket_getmessage(self._socket)
+
+
+
+  def _check_ip_change(self):
+    """
+    Helper method for getmessage(). Checks if IP has changed. If it has,
+    starts a new listener and updates the the original UDP server socket
+    to reference the new one.
+
+    """
+    current_ip = _check_current_ip()
+    if current_ip is None or current_ip == self._listen_ip:
+      return
+
+    # Start listening on the new IP, ignore network errors because
+    # connectivity may have not been re-established yet.
+    try:
+      new_udpserversocket = self._next_shim.listenformessage(self._listen_ip, self._listen_port)
+    except NetworkError:
+      return
+
+    self._server_socket_lock.acquire(True)
+    old_udpserversocket = self._socket
+
+    # Update the socket reference.
+    self._listen_ip = current_ip
+    self._socket = new_udpserversocket
+
+    self._server_socket_lock.release()
+
+    # Get any messages currently avaliable before closing the old socket.
+    while True:
+      try:
+        unreturned_tuple = self._next_shim.udpserversocket_getmessage(old_udpserversocket)
+      except Exception:
+        break
+      else:
+        self._server_socket_lock.acquire(True)
+        self._unreturned_message_tuples.append(unreturned_tuple)
+        self._server_socket_lock.release()
+
+    self._next_shim.udpserversocket_close(old_udpserversocket)
+
+    debug_log('\n\n\n', '*' * 80, '\n', show=True)
+    debug_log('zzzz new udp listener on', self._listen_ip, ':', self._listen_port, '\n', show=True)
+
+
+
+  def close(self):
+    self._server_socket_lock.acquire(True)
+
+    if self._closed:
+      self._server_socket_lock.release()
+      return False
+
+    else:
+      self._closed = True
+      self._server_socket_lock.release()
+
+      self._next_shim.udpserversocket_close(self._socket)
+
+      return True
+
+
+
+
+
+
+class MobilityShim(BaseShim):
+
+
+  # Dict that maps from (port, ip) to tcp server sockets.
+  _server_socket_dict = {}
+
+
+
+
+  def listenforconnection(self, localip, localport):
+    """
+    Returns a server socket for listening for connections on the given
+    local IP and port. It's possible we are still listening for
+    reconnections, but the application has closed the server socket,
+    in which case we should reuse the existing socket.
+
+    """
+    identity = (localip, localport)
+
+    if identity in self._server_socket_dict:
+      server_socket = self._server_socket_dict[identity]
+      server_socket._server_socket_lock.acquire(True)
+
+      try:
+        # The server socket hasn't been closed yet, so raise an exception.
+        if not server_socket._closed:
+          raise AlreadyListeningError("The provided localip and localport are already in use!")
+
+        # Reuse the server socket if we are already listening but have
+        # closed the connection.
+        elif server_socket._listener_loop_active:
+          server_socket._closed = False
+          return MobileTCPServerSocketWrapper(server_socket)
+
+        # If the socket is closed and it's loop is not active, then it
+        # is no longer listening, so we should just create a new
+        # server socket.
+
+      finally:
+        server_socket._server_socket_lock.release()
+
+    next_layer_socket = self.get_next_shim_layer().listenforconnection(localip, localport)
+    shim_sock = ShimTCPServerSocket(next_layer_socket, self)
+    mobile_sock = MobileTCPServerSocket(shim_sock, _check_current_ip(), localport)
+    self._server_socket_dict[identity] = mobile_sock
+    return MobileTCPServerSocketWrapper(mobile_sock)
+
+
+
+
+  def tcpserversocket_getconnection(self, mobiletcpserversocket):
+    return mobiletcpserversocket.getconnection()
+
+
+
+
+  def tcpserversocket_close(self, mobiletcpserversocket):
+    return mobiletcpserversocket.close()
+
+
+
+
+  def openconnection(self, destip, destport, localip, localport, original_timeout):
+    """
+    Keeps trying to openconnection until we timeout, ignoring
+    ConnectionRefusedError and InternetConnectivityError. Raises all other
+    errors during this period. At the end of the timeout, raises all errors.
+
+    """
+    timeout = original_timeout
+
+    while True:
+      start_time = getruntime()
+
+      try:
+        next_sockobj = self.get_next_shim_layer().openconnection(destip, destport, localip, localport, timeout)
+      except (ConnectionRefusedError, InternetConnectivityError), err:
+        pass
+      except Exception, err:
+        raise err
+
+      else:
+        shim_sock = ShimSocket(next_sockobj, self)
+
+        try:
+          session_sendmessage(shim_sock, "N")
+          message = session_recvmessage(shim_sock)
+
+        except Exception, err:
+          pass
+
+        else:
+          if message.startswith("N"):
+            connection_id = message[1:]
+            debug_log('zzzz Openconn created new shim_sock', repr(shim_sock), shim_sock, '\n', show=True)
+            return MobileSocket(shim_sock, [destip, destport, localip, localport, original_timeout], connection_id)
+
+          else:
+            # The remote server socket is listening for reconnections, but
+            # is closed, so we shouldn't be able to connect.
+            if message != "D":
+              debug_log('zzzz Openconn received bad connection id response: ', message, '\n', show=True)
+            try:
+              shim_sock.close()
+            except Exception:
+              pass
+            raise ConnectionRefusedError("The connection was refused!")
+
+        try:
+          shim_sock.close()
+        except Exception:
+          pass
+
+      timeout = timeout - (getruntime() - start_time)
+      if timeout <= 0:
+        debug_log('zzzz Openconn timed out\n', show=True)
+        raise TimeoutError("Timed-out connecting to the remote host!")
+
+      debug_log('zzzz Retrying openconnection. timeout:', timeout, 'err:', repr(err), str(err), '\n', show=True)
+
+
+
+  
+
+
+
+
+
+
+  def socket_close(self, mobile_socket):
+    return mobile_socket.close()
+
+
+
+  def socket_send(self, mobile_socket, msg):
+    return mobile_socket.send(msg)
+
+
+
+  def socket_recv(self, mobile_socket, bytes):
+    return mobile_socket.recv(bytes)
+
+
+
+
+
+
+  def listenformessage(self, localip, localport):
+    next_layer_socket = self.get_next_shim_layer().listenformessage(localip, localport)
+    shim_sock = ShimUDPServerSocket(next_layer_socket, self)
+    return MobileUDPServerSocket(shim_sock, _check_current_ip(), localport)
+
+
+
+  def udpserversocket_close(self, mobileudpserversocket):
+    return mobileudpserversocket.close()
+
+
+
+  def udpserversocket_getmessage(self, mobileudpserversocket):
+    return mobileudpserversocket.getmessage()
+
+
+
+
+
+
+
+  # =============================================
+  # Required shim functions
+  # =============================================
+
+
+  def copy(self):
+    return MobilityShim(self.shim_context['shim_stack'].copy(), self.shim_context['optional_args'])
+
+
+  
+  def get_advertisement_string(self):
+    shim_name = '(MobilityShim)'
+    return shim_name + self.get_next_shim_layer().get_advertisement_string()

@@ -1,0 +1,256 @@
+#!python
+"""
+<Program Name>
+  udpbranchinghelpershim.repy
+
+<Author>
+  Steven Portzer
+
+<Date Started>
+  December 2, 2011
+
+<Purpose>
+  Used by udp_branching_lib to multiplex UDP ports so the different
+  shims stacks being used by a given interface can share the same
+  UDP ports. It shouldn't be manually included in a shim stack. 
+
+"""
+
+#dy_import_module_symbols('udp_branching_lib')
+
+
+
+
+class UdpBranchingHelperServerSocket:
+
+
+  def __init__(self, server_socket, server_socket_id, id_string):
+    """
+    Initializes the server socket.
+
+    Arguments:
+      server_socket - the next layer's server sock, used to get messages
+
+      server_socket_id - (localip, localport) tuple for this server socket
+
+      id_string - the ID used to mark messages intended for this socket
+    """
+
+    # Store internal state.
+    self._next_server_socket = server_socket
+    self._server_socket_id = server_socket_id
+    self._id_string = id_string
+
+    # Keep track of if this socket has been closed.
+    self._closed = False
+    self._closed_lock = createlock()
+
+
+  def getmessage(self):
+    """
+    Returns a (remote_ip, remote_port, message) tuple if there are any
+    available messages to return.
+    """
+
+    self._closed_lock.acquire(True)
+
+    # Make sure the server socket hasn't been closed.
+    if self._closed:
+      self._closed_lock.release()
+      raise SocketClosedLocal("The socket has been closed!")
+
+    self._closed_lock.release()
+
+    id_tuple = (self._server_socket_id, self._id_string)
+    UdpBranchingInterface._unreturned_tuple_lock.acquire(True)
+
+    # Check if there are any unreturned messages we can return now.
+    if UdpBranchingInterface._unreturned_tuple_dict[id_tuple]:
+      UdpBranchingInterface._unreturned_tuple_lock.release()
+      return UdpBranchingInterface._unreturned_tuple_dict[id_tuple].pop(0)
+
+    UdpBranchingInterface._unreturned_tuple_lock.release()
+
+    # Get a message from the layer below us.
+    remote_ip, remote_port, message = self._next_server_socket.getmessage()
+
+    try:
+      message_id, message_body = message.split(':', 1)
+    except Exception:
+      raise SocketWouldBlockError("No messages currently available!")
+
+    # Check to see if the message is for us. If so, return it,
+    # otherwise enqueue it so it's intended recipient can return it.
+    message_tuple = (remote_ip, remote_port, message_body)
+    if message_id == self._id_string:
+      return message_tuple
+
+    else:
+      id_tuple = (self._server_socket_id, message_id)
+      UdpBranchingInterface._unreturned_tuple_lock.acquire(True)
+
+      # Make sure someone is actually listening for the message.
+      if id_tuple in UdpBranchingInterface._unreturned_tuple_dict:
+        UdpBranchingInterface._unreturned_tuple_dict[id_tuple].append(message_tuple)
+
+      UdpBranchingInterface._unreturned_tuple_lock.release()
+
+    raise SocketWouldBlockError("No messages currently available!")
+
+
+  def close(self):
+    """
+    Closes the server socket.
+    """
+
+    self._closed_lock.acquire(True)
+
+    # Check if the server socket has already been closed.
+    if self._closed:
+      self._closed_lock.release()
+      return False
+
+    else:
+      self._closed = True
+      self._closed_lock.release()
+
+      id_tuple = (self._server_socket_id, self._id_string)
+      UdpBranchingInterface._unreturned_tuple_lock.acquire(True)
+
+      # Discard our unreturned message tuples.
+      del UdpBranchingInterface._unreturned_tuple_dict[id_tuple]
+
+      UdpBranchingInterface._unreturned_tuple_lock.release()
+
+      UdpBranchingInterface._server_socket_lock.acquire(True)
+      server_socket, server_socket_set = UdpBranchingInterface._server_socket_dict[self._server_socket_id]
+
+      # Remove ourselves from the set of listening shims.
+      server_socket_set.discard(self._id_string)
+
+      # If we were the only server socket listening on our (ip, port),
+      # then close the next layer's server socket and clean up it's
+      # entry in the server socket dictionary.
+      if not server_socket_set:
+        del UdpBranchingInterface._server_socket_dict[self._server_socket_id]
+
+      UdpBranchingInterface._server_socket_lock.release()
+
+      if not server_socket_set:
+        server_socket.close()
+
+      return True
+
+
+
+
+class UdpBranchingHelperShim(BaseShim):
+
+  def __init__(self, shim_stack, optional_args=None):
+    """
+    <Purpose>
+      Initialize the UdpBranchingHelperShim.
+
+    <Arguments>
+      shim_stack - This is the shim stack that resides beneath
+          the current shim.
+
+      optional_args - The first argument is the name used to identify
+          this shim when sending and receiving messages.
+
+    <Side Effects>
+      None
+
+    <Exceptions>
+      None
+
+    <Return>
+      None
+    """
+
+    BaseShim.__init__(self, shim_stack, optional_args)
+    
+    self._id_string = optional_args[0]
+
+
+  def sendmessage(self, destip, destport, message, localip, localport):
+    """
+    Sends a UDP message with this multiplexer's ID string prepended to
+    the message so the destination can let the right shim stack receive
+    the message.
+    """
+
+    new_message = self._id_string + ':' + message
+    bytes_sent = self.get_next_shim_layer().sendmessage(destip, destport, new_message, localip, localport)
+    return max(0, bytes_sent - len(self._id_string + ':'))
+
+
+  def listenformessage(self, localip, localport):
+    """
+    Starts listening on the given local ip and port. If a different
+    multiplexer shim with a different ID string is already listening
+    then we can reuse the server socket.
+    """
+
+    server_socket_id = (localip, localport)
+    UdpBranchingInterface._server_socket_lock.acquire(True)
+
+    try:
+      # Check if we already have a socket listening on this (ip, port) pair.
+      if server_socket_id in UdpBranchingInterface._server_socket_dict:
+        server_socket, server_socket_set = UdpBranchingInterface._server_socket_dict[server_socket_id]
+
+        # Make sure this shim or one using the same ID isn't already listening.
+        if self._id_string in server_socket_set:
+          raise AlreadyListeningError("The provided localip and localport are already in use!")
+        else:
+          server_socket_set.add(self._id_string)
+
+      else:
+        # If we aren't already listening, create a new server socket.
+        server_socket = self.get_next_shim_layer().listenformessage(localip, localport)
+        UdpBranchingInterface._server_socket_dict[server_socket_id] = (server_socket, set([self._id_string]))
+
+    finally:
+      UdpBranchingInterface._server_socket_lock.release()
+
+    # Create a list for storing message tuples received when other
+    # server sockets called getmessge().
+    UdpBranchingInterface._unreturned_tuple_lock.acquire(True)
+    UdpBranchingInterface._unreturned_tuple_dict[(server_socket_id, self._id_string)] = []
+    UdpBranchingInterface._unreturned_tuple_lock.release()
+
+    return UdpBranchingHelperServerSocket(server_socket, server_socket_id, self._id_string)
+
+
+  def udpserversocket_getmessage(self, udpserversocket):
+    """
+    Tries to receive a message from the UDP server socket.
+    """
+    
+    return udpserversocket.getmessage()
+
+
+  def udpserversocket_close(self, udpserversocket):
+    """
+    Closes the UDP server socket.
+    """
+
+    return udpserversocket.close()
+
+
+  def copy(self):
+    """
+    Make and return a copy of self.
+    """
+
+    return UdpBranchingHelperShim(self.shim_context['shim_stack'].copy(),
+                                  self.shim_context['optional_args'])
+
+
+  def get_advertisement_string(self):
+    """
+    Return the advertisement string for this shim.
+    """
+
+    return '(UdpBranchingHelperShim,'+self._id_string+')' + self.get_next_shim_layer().get_advertisement_string()

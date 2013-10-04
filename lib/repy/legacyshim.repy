@@ -1,0 +1,160 @@
+#!python
+"""
+<Purpose>
+  The Legacy Shim is used for allowing a legacy client to connect
+  to a shim enabled server. The Legacy Shim opens up two tcpserversocket
+  when listenforconnection is called in order for both shim enabled client
+  and legacy clients to connect to the server.
+"""
+
+class LegacyShimTCPServerSocket():
+  """
+  This is a wrapper TCPServerSocket for the legacy shim.
+  """
+
+  def __init__(self, tcpserversocket_dict, shim_object):
+    self.tcpserversocket_dict = tcpserversocket_dict
+    self.shim_object = shim_object
+
+  def getconnection(self):
+    """
+    <Purpose>
+      We call getconnection first on the shim_tcpsocket, and if
+      that fails we call getconnection for the repy_tcpsocket.
+    
+    <Side Effect>
+      The shim tcpserversocket always gets called first, so clients
+      that are shim enabled will get serviced first.
+      MMM: Should we alternate between the two?
+    """
+    # If we were able to create the shim_tcpsocket, then we attempt to call
+    # getconnection() on the shim tcp server socket first. If we were unable 
+    # to create it or get a SocketWouldBlockError, we default to the basic
+    # repy getconnection() call. The reason for this is to ensure that even
+    # if the shimstack breaks down, we are able to revert to the default repy
+    # connection.
+    if self.tcpserversocket_dict['shim_tcpsocket']:
+      try:
+        rip, rport, sockobj = self.tcpserversocket_dict['shim_tcpsocket'].getconnection()
+        return (rip, rport, ShimSocket(sockobj, self.shim_object)) 
+      except SocketWouldBlockError:
+        pass
+
+    return self.tcpserversocket_dict['repy_tcpsocket'].getconnection()
+
+
+  def close(self):
+    self.tcpserversocket_dict['shim_tcpsocket'].close()
+    return self.tcpserversocket_dict['repy_tcpsocket'].close()
+
+
+
+
+
+class LegacyShim(BaseShim):
+  """
+  A shim that does nothing (no-operation). For debug purpose only.
+
+  """
+
+  def __init__(self, shim_stack=ShimStack(), optional_args=None):
+    """
+    <Purpose>
+      Initialize the LegacyShim with the appropriate shim stack 
+      underneath it.
+
+    <Arguments>
+      shim_stack - the shim stack that will be initially beneath
+          us. If optional_args is provided then it will be used
+          to create the shim stacks that will be used, but this
+          will be the default shim stack.
+
+      optional_args - If any optional args is provided, then it will
+          be used to create shim stacks.
+          
+    <Side Effects>
+      Two tcpserversocket or two udpserversockets are created for 
+      each call.
+      
+    <Exceptions>
+      ShimArgumentError will be raised if the arguments provided
+      is of not the right form or are incorrect.
+
+      Assertion error if optional args is not type of list.
+
+    <Return>
+      None
+    """
+
+    if optional_args:
+      assert(isinstance(optional_args, list)), "Bad optional args. Optional arg must be a list."
+      assert(len(optional_args) == 2), "Bad optional args. Must provide tcp/udp port numbers for the legacy shim to listen on."
+
+      try:
+        self.tcp_listenport = int(optional_args[0])
+        self.udp_listenport = int(optional_args[1])
+      except ValueError:
+        raise ShimInternalError("TCP or UDP listenport provided is not of type int.")
+
+
+    BaseShim.__init__(self, shim_stack, optional_args)
+
+
+
+
+  # ====================== TCP Connection ===========================
+  def listenforconnection(self, localip, localport):
+    """
+    <Purpose>
+      The purpose of this call is to open up two different tcp
+      server socket. One of the server socket will be shim enabled
+      and will call listenforconnection for the next shim on the stack
+      while the other server socket will be a pure repy server socket.
+
+    <Exception>
+      The Repy API exceptions will be raised in case of failure. List
+      of exceptions can be found here: https://seattle.cs.washington.edu/wiki/FutureRepyAPI
+     
+    <Return>
+      The call will return a LegacyShimTCPServerSocket object.
+    """
+    tcpserversocket_dict = {}
+
+    tcpserversocket_dict['shim_tcpsocket'] = self.get_next_shim_layer().listenforconnection(localip, self.tcp_listenport)
+    tcpserversocket_dict['repy_tcpsocket'] = listenforconnection(localip, localport)
+
+    return LegacyShimTCPServerSocket(tcpserversocket_dict, self)
+
+
+
+
+  def openconnection(self, destip, destport, localip, localport, timeout):
+    """
+    <Purpose>
+      The purpose of this openconnection call is to first try and connect
+      to the shim stack of the server. If that fails, it will default to
+      the repy openforconnection call.
+
+    <Exception>
+      The default Repy exceptions are raised. The list of exceptioncs can
+      be found here: https://seattle.cs.washington.edu/wiki/FutureRepyAPI
+    """
+
+    # First try to open a connection using our shim stack. If we get a ConnectionRefusedError
+    # or a DuplicateTupleError, then we default to the repy openconnection.
+    try:
+      return ShimSocket(self.get_next_shim_layer().openconnection(destip, self.tcp_listenport, localip, localport, timeout), self)
+    except (DuplicateTupleError, ConnectionRefusedError):
+      pass
+    return openconnection(destip, destport, localip, localport, timeout)
+      
+
+
+
+  def copy(self):
+    return LegacyShim(self.shim_context['shim_stack'].copy(), self.shim_context['optional_args'])
+
+
+  
+  def get_advertisement_string(self):
+    return '(LegacyShim,%d,%d)' % (self.tcp_listenport, self.udp_listenport) + self.get_next_shim_layer().get_advertisement_string()
