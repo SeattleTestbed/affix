@@ -1,3 +1,4 @@
+#!python
 """
 <Program Name>
   baseaffix.repy
@@ -28,15 +29,16 @@ dy_import_module_symbols("affix_wrapper_lib")
 class BaseAffix:
 
 
-  def __init__(self, affix_stack, optional_args=None):
+  def __init__(self, next_affix, optional_args=None):
     """
     <Purpose>
       Initialize this particular affix.
 
     <Arguments>
-      affix_stack - This is the affix stack that resides beneath
-          the current affix. It can be used to view and modify
-          the stack beneath it.
+      next_affix - This is the affix component that resides beneath
+          the current affix in the stack. This AFFIX component may
+          be used appropriately or removed if the current AFFIX 
+          chooses to remove it.
 
       optional_args - Any optional argument that this particular 
           affix takes.
@@ -53,24 +55,25 @@ class BaseAffix:
 
     # Global variables that are used to keep the state of this affix.
     self.affix_context = {'optional_args' : None,
-                         'affix_stack' : None
+                         'next_affix' : None
                         }
 
 
     # Ensure that the reference to the affixstack that we get
-    # is of the type AffixStack.
-    #try:
-    #  assert(isinstance(affix_stack, AffixStack))
-    #except:
-    #  err = "Bad arg provided. affix_stack must be of type AffixStack."
-    #  err += " Type provided: '%s'" % str(type(affix_stack))
-    #  raise AffixArgumentError(err)
+    # is of the type BaseAffix.
+    try:
+      if next_affix:
+        assert(isinstance(next_affix, BaseAffix))
+    except:
+      err = "Bad arg provided. next_affix must be of type BaseAffix."
+      err += " Type provided: '%s'" % str(type(next_affix))
+      raise AffixArgumentError(err)
 
     self.affix_context['optional_args'] = optional_args
     
     # I am going to do a copy just to make sure we don't have any 
     # reference to it.
-    self.affix_context['affix_stack'] = affix_stack
+    self.affix_context['next_affix'] = next_affix
 
 
 
@@ -87,7 +90,7 @@ class BaseAffix:
 
     class MyAffix(BaseAffix):
       def copy(self):
-		mycopy = MyAffix(self.affix_context['affix_stack'].deepcopy(), self.affix_context['optional_args']
+		mycopy = MyAffix(self.affix_context['next_affix'].copy(), self.affix_context['optional_args']
         mycopy._internalstate = self._internalstate
         return mycopy
 
@@ -139,9 +142,9 @@ class BaseAffix:
       repy network api.
     """
     
-    try:
-      next_layer = self.affix_context['affix_stack'].peek()
-    except AffixStackError:
+    next_layer = self.affix_context['next_affix']
+    
+    if not next_layer:
       # This is the case when the affix stack is empty.
       # So we return a wrapper object which will allow
       # us to use the original repy network api calls.
@@ -151,11 +154,6 @@ class BaseAffix:
 
 
 
-  def getaffixstack(self):
-    return self.affix_context['affix_stack']
-    
-  def gethostname(self):
-    return self.getaffixstack().gethostname()
 
   # ============================================================================
   # Public methods that directly interface with the application. The methods may
@@ -210,10 +208,11 @@ class BaseAffix:
 
   def tcpserversocket_getconnection(self, tcpserversocket):
     # We make a copy of ourselves before doing a getconnection
-    # as this function may be invoked multiple times and they 
-    # may each modify the affix stack below it differently. 
-    #this_affix_copy = self.copy()
-    (remote_ip, remote_port, repy_socket) = self.get_next_affix_layer().tcpserversocket_getconnection(tcpserversocket)
+    # as this function may be invoked multiple times and each
+    # individual socket may each modify the affix stack 
+    # below it differently. 
+    this_affix_copy = self.copy()
+    (remote_ip, remote_port, repy_socket) = this_affix_copy.get_next_affix_layer().tcpserversocket_getconnection(tcpserversocket)
 
     return (remote_ip, remote_port, AffixSocket(repy_socket, self))
 

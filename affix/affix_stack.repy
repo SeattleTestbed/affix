@@ -418,8 +418,7 @@ class AffixStack:
     # actual network calls when we have reached the bottom
     # of the stack.
     if not affix_str:
-      self.affix_stack_context['top_affix'] = None
-      return
+      return None
       # We were previously pushing down the RepyNetworkApiWrapper
       # onto a stack in order to resolve issue #11. Until further
       # discussion, we will not be not adding the wrapper on to
@@ -445,44 +444,40 @@ class AffixStack:
     # the new AffixStack objects stack_object to our own stack_object.
     # After we have copied it, we can now push on the top affix on top
     # of it.
-    new_stack_object = AffixStack(leftover_affix_str, self.affix_stack_context['localhost'])
+    next_affix_object = self.make_affix_stack(leftover_affix_str)
 
     # Create the new affix object.
     # The new stack will have a copy of the affixstack before this 
     # layer is added. So if this is the first layer, then the 
     # Underlying stack beneath it would be None.
-    top_affix = self.create_affix_object(top_affix_name, affix_args, new_stack_object)
+    new_affix = self.create_affix_object(top_affix_name, affix_args, next_affix_object)
 
 
     # Link the top affix to the affix stack object. This makes top_affix
     # the root/head of the affix stack. Even though it is called a affix
     # stack, the internals of the stack will work like a linked list.
-    self.push(top_affix)
+    #self.push(top_affix)
 
     # Return the top affix. Do we need to return anything? I am returning for convenience.
     # If this is the first layer then our peek may be empty.
-    try:
-      return_layer = self.peek()
-    except AffixStackError:
-      return_layer = None
-    return return_layer
+    return new_affix
     
 
 
 
 
-  def create_affix_object(self, affix_name, affix_args, affix_stack_object):
+  def create_affix_object(self, affix_name, affix_args, next_affix_object):
     """
     <Purpose>
-      Create a affix object given a affix name and its arguments.
+      Create an affix object given a affix name and its arguments.
 
     <Arguments>
       affix_name - a string that defines the name of the affix.
 
       affix_args - the arguments to use to create the affix.
 
-      affix_stack_object - the affix stack that will be below the new affix
-          object that we are creating.
+      next_affix_object - the affix component that will be below the new affix
+          object that we are creating in the stack.
 
     <Side Effects>
       None
@@ -509,7 +504,7 @@ class AffixStack:
     # Create a new affix object from the name and arguments provided.
     affix_object_class = AFFIX_CLASS_DICT[affix_name]
 
-    new_affix_object = affix_object_class(affix_stack_object, affix_args)
+    new_affix_object = affix_object_class(next_affix_object, affix_args)
 
     return new_affix_object
 
@@ -521,8 +516,12 @@ class AffixStack:
     """
     <Purpose>
       Makes sure that the affix string provided is in the
-      right format. Basically ensure that the parentheses 
-      all match up.
+      right format. It ensure that the parentheses all 
+      match up and the input string is valid. For example,
+      there should not be any other AFFIX underneath a
+      branching/splitter AFFIX as branching/splitter 
+      AFFIXs are considered to be at the bottom of the 
+      stack.
 
     <Arguments>
       affix_str - a string that has the list of affixs and their
