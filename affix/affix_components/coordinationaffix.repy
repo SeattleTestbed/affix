@@ -38,12 +38,10 @@ dy_import_module_symbols("affix_exceptions")
 dy_import_module_symbols("affixstackinterface")
 
 # Whether we want to print debug statements.
-_COORDINATION_AFFIX_DEBUG_MODE = False 
+_COORDINATION_AFFIX_DEBUG_MODE = True
 
 
 class CoordinationAffix(BaseAffix):
-
-
 
   # A dictionary that maps a server socket object to the corresponding
   # advertisement handle. We need to save all the handles that are created as
@@ -61,8 +59,30 @@ class CoordinationAffix(BaseAffix):
   _ZENODOTUS_NAME_TTL = 15
 
 
+  def __init__(self, next_affix, optional_args=None):
+
+    # If an optional argument is provided, ensure that it
+    # is a string then use it as the localhost. If an 
+    # argument is not provided, the we will use the local
+    # ip address as the localhost.
+    if optional_args:
+      self.localhost = optional_args[0] 
+      assert(isinstance(self.localhost, str))
+    else:
+      self.localhost = getmyip()
+        
+
+
+    # Initialize the CoordinationAffix.
+    BaseAffix.__init__(self, next_affix, optional_args)
+
+
   def copy(self):
-    return CoordinationAffix(self.affix_context['affix_stack'].deepcopy(), self.affix_context['optional_args'])
+    if self.affix_context['next_affix']:
+      next_affix_copy = self.affix_context['next_affix'].copy()
+    else:
+      next_affix_copy = None
+    return CoordinationAffix(next_affix_copy, self.affix_context['optional_args'])
 
 
 
@@ -96,6 +116,8 @@ class CoordinationAffix(BaseAffix):
       Same as the network API in repy v2.    
 
     """
+    if _COORDINATION_AFFIX_DEBUG_MODE:
+      print "Coordination is about to start listening on '%s:%d'" % (localhost, localport)
     # If we are listening on a zenodotus name, first translate it to the local
     # IP and start the advertisement thread that constantly announces the
     # zenodotus name -> IP mapping.
@@ -181,6 +203,9 @@ class CoordinationAffix(BaseAffix):
     server_key = str(destip) + ',' + str(destport) + ',TCP'
     lookup_result_list = LookupCache().lookup(server_key)
 
+    if _COORDINATION_AFFIX_DEBUG_MODE:
+      print "Lookup result is: " + str(lookup_result_list)
+
     # Reverse the results as the latest affix advertisement always comes last.
     lookup_result_list.reverse()
     # We remember all the affixs that fail to connect, so that we can piggyback
@@ -188,16 +213,15 @@ class CoordinationAffix(BaseAffix):
     failed_affix_str = ''
 
     # Find the localhost of the node.
-    localhost = self.affix_context['affix_stack'].affix_stack_context['localhost']
+    localhost = self.localhost
 
     # We go through all the possible affix stack strings advertised. The list
     # will most likely contain only one value, but it is possible that a affix
     # may advertise two different values under the same key because its affix
     # stack had somehow changed.
     for server_affix_stack_str in lookup_result_list:
-
-      # Build my affix stack
-      self.affix_context['affix_stack'] = AffixStack(server_affix_stack_str, localhost)
+      # Build my affix stack and store it in the affix_context.
+      self.affix_context['next_affix'] = AffixStack(server_affix_stack_str, localhost).affix_stack_context['top_affix']
       if _COORDINATION_AFFIX_DEBUG_MODE:
         log('CoordinationAffix: Trying affix stack', self.get_next_affix_layer(), '\n')
       # Check if we have exceeded the time limit.
@@ -335,7 +359,7 @@ class CoordinationAffix(BaseAffix):
       # We asusme that the last result in the list returned contains the most
       # up-to-date server affix stack string. We build a new affix stack based on it.
       server_affix_stack_str = lookup_result_list.pop()
-      localhost = self.affix_context['affix_stack'].affix_stack_context['localhost']
+      localhost = self.localhost
       self.affix_context['affix_stack'] = AffixStack(server_affix_stack_str, localhost)
       
       # Send the message using the new affix stack.

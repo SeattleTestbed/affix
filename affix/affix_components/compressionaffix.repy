@@ -439,7 +439,7 @@ class CompressionSocket():
 class CompressionAffix(BaseAffix):
 
 
-  def __init__(self, affix_stack, optional_args=None):
+  def __init__(self, next_affix, optional_args=None):
     """
     One can specify the size of the send/recv block in the optional
     arguments. For a send/recv block size of 1024 bytes, the affix string would
@@ -460,11 +460,15 @@ class CompressionAffix(BaseAffix):
       self._SEND_BLOCK_SIZE = 2 ** 11
       self._RECV_BLOCK_SIZE = 2 ** 11
 
-    BaseAffix.__init__(self, affix_stack, optional_args)
+    BaseAffix.__init__(self, next_affix, optional_args)
 
 
   def copy(self):
-    return CompressionAffix(self.affix_context['affix_stack'].deepcopy(), self.affix_context['optional_args'])
+    if self.affix_context['next_affix']:
+      next_affix_copy = self.affix_context['next_affix'].copy()
+    else:
+      next_affix_copy = None
+    return CompressionAffix(next_affix_copy, self.affix_context['optional_args'])
 
   
   def get_advertisement_string(self):

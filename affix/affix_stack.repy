@@ -65,73 +65,10 @@
 # Import the affix exceptions.
 dy_import_module_symbols("affix_exceptions")
 
-# A dictionary that holds all the affix objects that have been
-# registered. This dictionary is shared globally by all AffixStacks
-# because we need to register each affix only once.
-AFFIX_CLASS_DICT = {}
-
-
-# We have this function outside so each affix gets registed only once
-# globaly. Otherwise we might run into some import error.
-def find_and_register_affix(affix_name):
-  """
-  <Purpose>
-    Given a affix, this function imports the affix file
-    if it exists and then registers the affix class.
-    Note that the expected naming convention of the affix
-    files is that it will be all lower-case with no space
-    or symbols in the name. 
-
-    Example:
-        If we have a affix called ExampleAffix then the file
-        name is expected to be exampleaffix.repy
-
-        ExampleAffix.repy, example_affix.repy or any other 
-        forms are unaccepted.
-
-  <Arguments>
-    affix_name - The name of the affix that must be imported 
-        and registered.
-
-  <Side Effects>
-    Repy library file is imported.
-
-  <Exceptions>
-    AffixNotFoundError - raised if the requested affix_name does
-        not exist or is not in the current directory.
-
-    AssertionError - raised if arguments provided is of an 
-        unexpected type or value.
-  <Return>
-    None
-  """
-
-  assert(isinstance(affix_name, str)), "Bad arg type. affix_name must be a string."
-
-  # If the affix class has already been registered, then we don't
-  # need to do anything.
-  if affix_name in AFFIX_CLASS_DICT.keys():
-    return
-
-  # We have to do the import in a while loop in case we get the 
-  # FileInUseError. This error occurs when multiple affix stacks
-  # may be trying to load the affix.
-  while True:
-    # Try to import the affix file. We convert the name to 
-    # lower case before importing.
-    try:
-      if affix_name not in _context.keys():
-        dy_import_module_symbols(affix_name.lower())
-    except FileInUseError, err:
-      sleep(0.01)
-    else:
-      break
-
-  # Register the affix.
-  AFFIX_CLASS_DICT[affix_name] = _context.copy()[affix_name]    
-          
-
-
+# Import affixmisc.repy that contains various functions
+# that are used for registering/parsing/initializing
+# AFFIX components.
+dy_import_module_symbols("affixmisc.repy")
 
 # Register the base affix class before doing anything.
 # The base affix is used by all other affixs.
@@ -141,9 +78,9 @@ find_and_register_affix('BaseAffix')
 
 
 
-# ======================================================================================================
+# ===========================================================================
 # AffixStack Class - The main AffixStack class that is used.
-# ======================================================================================================
+# ===========================================================================
 
 
 
@@ -194,7 +131,7 @@ class AffixStack:
     if localhost and not isinstance(localhost, str):
       raise AffixArgumentError("The 'localhost' provided must be a string.")
 
-    self.make_affix_stack(affix_stack_str, self.affix_stack_context['top_affix'])
+    self.affix_stack_context['top_affix'] = self.make_affix_stack(affix_stack_str)
 
     self.affix_stack_context['localhost'] = localhost
     self.affix_stack_context['affix_str'] = affix_stack_str
@@ -203,9 +140,9 @@ class AffixStack:
 
 
 
-# ==================================================================================
+# ===========================================================================
 # Public Methods - Used by developers to manipulate affix stack.
-# ==================================================================================
+# ===========================================================================
 
   def push(self, affix_object):
     """
@@ -375,14 +312,13 @@ class AffixStack:
 
 
 
-  def make_affix_stack(self, affix_str, stack_object):
+  def make_affix_stack(self, affix_str):
     """
     <Purpose>
       Recursively build up a affix stack from a affix string.
 
     <Arguments>
       affix_str - a affix string used to build affix stack.
-      stack_object - the current affix stack.
 
     <Side Effects>
       None
@@ -399,12 +335,8 @@ class AffixStack:
           is an unexpected type or value.
 
     <Return>
-      A affix stack list or none if affix_str is empty.
+      An AFFIX that was just created or none if affix_str is empty.
     """
-
-
-    # Some sanity checks.
-    assert(isinstance(affix_str, str)), "Bad arg type. affix_str must be a string."
     
     # We are going to work our way up from the bottom. So we 
     # recursively go to the bottom of the stack and then
@@ -424,7 +356,10 @@ class AffixStack:
       # discussion, we will not be not adding the wrapper on to
       # the stack.
       # self.push(RepyNetworkApiWrapper())
-      
+
+
+    # Some sanity checks.
+    assert(isinstance(affix_str, str)), "Bad arg type. affix_str must be a string."      
 
     # Build stack recursively. Any exceptions raised will just
     # percolate up. This may raise a AffixConfigError
