@@ -268,8 +268,14 @@ class AffixStack:
     # AFFIX component and push it on to the new empty stack.
     new_stack = AffixStack()
     top_affix = self.affix_stack_context['top_affix']
-    
-    new_stack.affix_stack_context['top_affix'] = top_affix.copy()
+
+    # If the current stack contains an AFFIX, we copy it over, otherwise
+    # we will set it to None.
+    if top_affix:
+      new_stack.affix_stack_context['top_affix'] = top_affix.copy()
+    else:
+      new_stack.affix_stack_context['top_affix'] = None
+
     new_stack.affix_stack_context['affix_str'] = self.affix_stack_context['affix_str']
     new_stack.affix_stack_context['localhost'] = self.affix_stack_context['localhost']
 
