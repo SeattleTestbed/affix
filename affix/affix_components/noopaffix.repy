@@ -15,4 +15,4 @@ class NoopAffix(BaseAffix):
 
   
   def get_advertisement_string(self):
-    return '(NoopAffix)' + self.get_next_affix_layer().get_advertisement_string()
+    return '(NoopAffix)' + self.peek().get_advertisement_string()

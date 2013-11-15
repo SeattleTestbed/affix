@@ -128,7 +128,7 @@ class FECAffix(BaseAffix):
 
 
   def get_advertisement_string(self):
-    return '(FECAffix,' + str(self._packets_per_bundle) + ')' + self.get_next_affix_layer().get_advertisement_string()
+    return '(FECAffix,' + str(self._packets_per_bundle) + ')' + self.peek().get_advertisement_string()
 
 
 
@@ -143,7 +143,7 @@ class FECAffix(BaseAffix):
     # always the case.
     while True:
 
-      srcip, srcport, packetstring = self.get_next_affix_layer().udpserversocket_getmessage(udpserversocket)
+      srcip, srcport, packetstring = self.peek().udpserversocket_getmessage(udpserversocket)
 
       # grab a lock to prevent concurrent access to shared state
       self.fec_context['recv_lock'].acquire(True)
@@ -288,7 +288,7 @@ class FECAffix(BaseAffix):
       newpacketdata = str(bundleid)+":"+str(packetnum)+":"+packetbody
 
       # ... and send it out...
-      self.get_next_affix_layer().sendmessage(destip,destport,newpacketdata,localip,localport)
+      self.peek().sendmessage(destip,destport,newpacketdata,localip,localport)
 
       
       # let's add this packet to the list...
@@ -314,7 +314,7 @@ class FECAffix(BaseAffix):
       xorpacketdata = str(bundleid)+":"+str(packetnum+1)+":"+lengthheader+":"+xorpacketbody
 
       # ... and send it out...
-      self.get_next_affix_layer().sendmessage(destip,destport,xorpacketdata,localip,localport)
+      self.peek().sendmessage(destip,destport,xorpacketdata,localip,localport)
 
       # now, let's delete the sent data for this bundle since it's no longer 
       # needed.

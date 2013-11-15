@@ -87,7 +87,7 @@ class CoordinationAffix(BaseAffix):
 
 
   def get_advertisement_string(self):
-    return '(CoordinationAffix)' + self.get_next_affix_layer().get_advertisement_string()
+    return '(CoordinationAffix)' + self.peek().get_advertisement_string()
 
 
 
@@ -131,12 +131,12 @@ class CoordinationAffix(BaseAffix):
       localip = localhost
 
     # Start listening so we have a complete view of the affix stack below us.
-    tcpserversocket = self.get_next_affix_layer().listenforconnection(localip, localport)
+    tcpserversocket = self.peek().listenforconnection(localip, localport)
 
     # The underlying affix stack has been built completely. We can advertise the
     # affix stack.
     adv_key = str(localhost) + ',' + str(localport) + ',TCP'
-    adv_value = self.get_next_affix_layer().get_advertisement_string()
+    adv_value = self.peek().get_advertisement_string()
     if _COORDINATION_AFFIX_DEBUG_MODE:
       log('CoordinationAffix: Advertised', adv_key, adv_value, '\n')
     adv_handle = AdvertisePipe().add(adv_key, adv_value)
@@ -164,7 +164,7 @@ class CoordinationAffix(BaseAffix):
     Stops listening and stops advertising the server.
 
     """
-    close_result = self.get_next_affix_layer().tcpserversocket_close(tcpserversocket)
+    close_result = self.peek().tcpserversocket_close(tcpserversocket)
 
     # Now that we have closed the listener without any exceptions, we can safely
     # stop the advertisement.
@@ -223,7 +223,7 @@ class CoordinationAffix(BaseAffix):
       # Build my affix stack and store it in the affix_context.
       self.affix_context['next_affix'] = AffixStack(server_affix_stack_str, localhost).affix_stack_context['top_affix']
       if _COORDINATION_AFFIX_DEBUG_MODE:
-        log('CoordinationAffix: Trying affix stack', self.get_next_affix_layer(), '\n')
+        log('CoordinationAffix: Trying affix stack', self.peek(), '\n')
       # Check if we have exceeded the time limit.
       time_taken = getruntime() - start_time
       if time_taken > timeout:
@@ -231,9 +231,9 @@ class CoordinationAffix(BaseAffix):
 
       # Since we spent some time contacting the advertisement service, we have
       # less time for the actual openconn.
-      print "Using affix string: " + self.get_next_affix_layer().get_advertisement_string()
+      print "Using affix string: " + self.peek().get_advertisement_string()
       try:
-        sock = self.get_next_affix_layer().openconnection(destip, destport, localip, localport, timeout - time_taken)
+        sock = self.peek().openconnection(destip, destport, localip, localport, timeout - time_taken)
         return AffixSocket(sock, self.copy())
 
       # We ignore the error here, as we may have been contacting a legacy
@@ -292,12 +292,12 @@ class CoordinationAffix(BaseAffix):
       localip = localhost
 
     # Start listening so we have a complete view of the affix stack below us.
-    udpserversocket = self.get_next_affix_layer().listenformessage(localip, localport)
+    udpserversocket = self.peek().listenformessage(localip, localport)
 
     # The underlying affix stack has been built completely. We can advertise the
     # affix stack.
     adv_key = str(localip) + ',' + str(localport) + ',UDP'
-    adv_value = self.get_next_affix_layer().get_advertisement_string()
+    adv_value = self.peek().get_advertisement_string()
     adv_handle = AdvertisePipe().add(adv_key, adv_value)
 
     # We need to save the advertisement handle to a global dictionary, so that
@@ -317,7 +317,7 @@ class CoordinationAffix(BaseAffix):
     Stops listening and stops advertising the server.
 
     """
-    close_result = self.get_next_affix_layer().udpserversocket_close(udpserversocket)
+    close_result = self.peek().udpserversocket_close(udpserversocket)
 
     # Now that we have closed the listener without any exceptions, we can safely
     # stop the advertisement.
@@ -363,7 +363,7 @@ class CoordinationAffix(BaseAffix):
       self.affix_context['affix_stack'] = AffixStack(server_affix_stack_str, localhost)
       
       # Send the message using the new affix stack.
-      return self.get_next_affix_layer().sendmessage(destip, destport, message, localip, localport)
+      return self.peek().sendmessage(destip, destport, message, localip, localport)
 
     else:
 

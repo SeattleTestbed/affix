@@ -129,7 +129,7 @@ class LogAffix(BaseAffix):
     self._log(log_info)
 
     try:
-      sent = self.get_next_affix_layer().sendmessage(destip, destport, message, localip, localport)
+      sent = self.peek().sendmessage(destip, destport, message, localip, localport)
     except Exception, err:
       self._log('%s\n > Exception = %s, %s\n' % (log_info, repr(err), str(err)))
       raise err
@@ -145,7 +145,7 @@ class LogAffix(BaseAffix):
     self._log(log_info)
 
     try:
-      next_layer_socket = self.get_next_affix_layer().listenformessage(localip, localport)
+      next_layer_socket = self.peek().listenformessage(localip, localport)
     except Exception, err:
       self._log('%s\n > Exception = %s, %s\n' % (log_info, repr(err), str(err)))
       raise err
@@ -164,7 +164,7 @@ class LogAffix(BaseAffix):
     self._log(log_info)
 
     try:
-      next_sockobj = self.get_next_affix_layer().openconnection(destip, destport, localip, localport, timeout)
+      next_sockobj = self.peek().openconnection(destip, destport, localip, localport, timeout)
     except Exception, err:
       self._log('%s\n > Exception = %s, %s\n' % (log_info, repr(err), str(err)))
       raise err
@@ -182,7 +182,7 @@ class LogAffix(BaseAffix):
     self._log(log_info)
 
     try:
-      next_layer_socket = self.get_next_affix_layer().listenforconnection(localip, localport)
+      next_layer_socket = self.peek().listenforconnection(localip, localport)
     except Exception, err:
       self._log('%s\n > Exception = %s, %s\n' % (log_info, repr(err), str(err)))
       raise err
@@ -200,7 +200,7 @@ class LogAffix(BaseAffix):
     self._log(log_info)
 
     try:
-      value = self.get_next_affix_layer().socket_close(socket)
+      value = self.peek().socket_close(socket)
     except Exception, err:
       self._log('%s\n > Exception = %s, %s\n' % (log_info, repr(err), str(err)))
       raise err
@@ -216,7 +216,7 @@ class LogAffix(BaseAffix):
     self._log(log_info)
 
     try:
-      sent = self.get_next_affix_layer().socket_send(socket, msg)
+      sent = self.peek().socket_send(socket, msg)
     except Exception, err:
       self._log('%s\n > Exception = %s, %s\n' % (log_info, repr(err), str(err)))
       raise err
@@ -232,7 +232,7 @@ class LogAffix(BaseAffix):
     self._log(log_info)
 
     try:
-      data = self.get_next_affix_layer().socket_recv(socket, bytes)
+      data = self.peek().socket_recv(socket, bytes)
     except Exception, err:
       self._log('%s\n > Exception = %s, %s\n' % (log_info, repr(err), str(err)))
       raise err
@@ -247,7 +247,7 @@ class LogAffix(BaseAffix):
     log_info = 'tcpserversocket_getconnection, tcpserversocket = %s' % tcpserversocket
 
     try:
-      (remote_ip, remote_port, repy_socket) = self.get_next_affix_layer().tcpserversocket_getconnection(tcpserversocket)
+      (remote_ip, remote_port, repy_socket) = self.peek().tcpserversocket_getconnection(tcpserversocket)
     except Exception, err:
       #self._log('%s\n > Exception = %s, %s\n' % (log_info, repr(err), str(err)))
       raise err
@@ -266,7 +266,7 @@ class LogAffix(BaseAffix):
     self._log(log_info)
 
     try:
-      value = self.get_next_affix_layer().tcpserversocket_close(tcpserversocket)
+      value = self.peek().tcpserversocket_close(tcpserversocket)
     except Exception, err:
       self._log('%s\n > Exception = %s, %s\n' % (log_info, repr(err), str(err)))
       raise err
@@ -282,7 +282,7 @@ class LogAffix(BaseAffix):
     self._log(log_info)
 
     try:
-      value = self.get_next_affix_layer().udpserversocket_getmessage(udpserversocket)
+      value = self.peek().udpserversocket_getmessage(udpserversocket)
     except Exception, err:
       self._log('%s\n > Exception = %s, %s\n' % (log_info, repr(err), str(err)))
       raise err
@@ -298,7 +298,7 @@ class LogAffix(BaseAffix):
     self._log(log_info)
 
     try:
-      value = self.get_next_affix_layer().udpserversocket_close(udpserversocket)
+      value = self.peek().udpserversocket_close(udpserversocket)
     except Exception, err:
       self._log('%s\n > Exception = %s, %s\n' % (log_info, repr(err), str(err)))
       raise err
@@ -318,4 +318,4 @@ class LogAffix(BaseAffix):
 
   
   def get_advertisement_string(self):
-    return '(LogAffix)' + self.get_next_affix_layer().get_advertisement_string()
+    return '(LogAffix)' + self.peek().get_advertisement_string()

@@ -125,7 +125,7 @@ class DataLimitAffix(BaseAffix):
           self.data_limit_context['data_transfer_start_up'] = cur_time
 
         # Send the message.
-        data_sent = self.get_next_affix_layer().socket_send(socket, msg)
+        data_sent = self.peek().socket_send(socket, msg)
         
         self.data_limit_context['data_uploaded'] += data_sent
         
@@ -189,7 +189,7 @@ class DataLimitAffix(BaseAffix):
           self.data_limit_context['data_transfer_start_down'] = cur_time
 
         # Receive the message.
-        msg_received = self.get_next_affix_layer().socket_recv(socket, bytes)
+        msg_received = self.peek().socket_recv(socket, bytes)
         
         self.data_limit_context['data_downloaded'] += len(msg_received)
 
@@ -229,4 +229,4 @@ class DataLimitAffix(BaseAffix):
     The DataLimitAffix is an one sided affix, which means it
     doesn't need to advertise itself.
     """
-    return self.get_next_affix_layer().get_advertisement_string()
+    return self.peek().get_advertisement_string()

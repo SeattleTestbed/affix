@@ -181,7 +181,7 @@ class UdpBranchingHelperAffix(BaseAffix):
     """
 
     new_message = self._id_string + ':' + message
-    bytes_sent = self.get_next_affix_layer().sendmessage(destip, destport, new_message, localip, localport)
+    bytes_sent = self.peek().sendmessage(destip, destport, new_message, localip, localport)
     return max(0, bytes_sent - len(self._id_string + ':'))
 
 
@@ -208,7 +208,7 @@ class UdpBranchingHelperAffix(BaseAffix):
 
       else:
         # If we aren't already listening, create a new server socket.
-        server_socket = self.get_next_affix_layer().listenformessage(localip, localport)
+        server_socket = self.peek().listenformessage(localip, localport)
         UdpBranchingInterface._server_socket_dict[server_socket_id] = (server_socket, set([self._id_string]))
 
     finally:
@@ -253,4 +253,4 @@ class UdpBranchingHelperAffix(BaseAffix):
     Return the advertisement string for this affix.
     """
 
-    return '(UdpBranchingHelperAffix,'+self._id_string+')' + self.get_next_affix_layer().get_advertisement_string()
+    return '(UdpBranchingHelperAffix,'+self._id_string+')' + self.peek().get_advertisement_string()

@@ -310,7 +310,7 @@ class UdpMultiPipeAffix(BaseAffix):
     Return the advertisement string for this affix.
     """
     my_name = '(UdpMultiPipeAffix,%s)' % ','.join(self.affix_str_list)
-    next_layer_name = self.get_next_affix_layer().get_advertisement_string()
+    next_layer_name = self.peek().get_advertisement_string()
 
     # If we have affixs that are not advertising below us, for example
     # just a logging affix. We want to append a NoopAffix on the advertisement

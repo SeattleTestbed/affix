@@ -373,7 +373,7 @@ class RSAAffix(BaseAffix):
     """
 
     # Open a connection by calling the next layer of affix.
-    sockobj = self.get_next_affix_layer().openconnection(destip, destport, localip, localport, timeout)
+    sockobj = self.peek().openconnection(destip, destport, localip, localport, timeout)
 
     # Generate a new set of pubkey/privkey and send the pub
     # key back to the server to receive the actual key.
@@ -427,7 +427,7 @@ class RSAAffix(BaseAffix):
     """
 
     # Call the next layer of socket to get a connection.
-    (remoteip, remoteport, sockobj) = self.get_next_affix_layer().tcpserversocket_getconnection(tcpserversocket)
+    (remoteip, remoteport, sockobj) = self.peek().tcpserversocket_getconnection(tcpserversocket)
 
     # Try to get the initial greeting from the connection.
     try:
@@ -501,6 +501,6 @@ class RSAAffix(BaseAffix):
     The RSAAffix only advertises its name. No optional
     args are avertised.
     """
-    return '(RSAAffix)' + self.get_next_affix_layer().get_advertisement_string()
+    return '(RSAAffix)' + self.peek().get_advertisement_string()
 
     

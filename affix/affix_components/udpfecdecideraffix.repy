@@ -105,4 +105,4 @@ class UdpFECDeciderAffix(BaseUdpDeciderAffix):
     affix_string = "(UdpFECDeciderAffix," + \
                   str(self._throughput_threshold) + "," + \
                   str(self._drop_rate_threshold) + ")"
-    return affix_string + self.get_next_affix_layer().get_advertisement_string()
+    return affix_string + self.peek().get_advertisement_string()

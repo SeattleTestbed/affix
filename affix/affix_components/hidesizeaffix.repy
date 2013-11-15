@@ -379,7 +379,7 @@ class HideSizeAffix(BaseAffix):
     else:
       affix_name += ')'
 
-    return affix_name + self.get_next_affix_layer().get_advertisement_string()
+    return affix_name + self.peek().get_advertisement_string()
 
 
 
@@ -391,7 +391,7 @@ class HideSizeAffix(BaseAffix):
     """
 
     # Call the next layer of tcpserver_getconnection()
-    (remote_ip, remote_port, repy_socket) = self.get_next_affix_layer().tcpserversocket_getconnection(tcpserversocket)
+    (remote_ip, remote_port, repy_socket) = self.peek().tcpserversocket_getconnection(tcpserversocket)
 
     return (remote_ip, remote_port, HideSizeSocket(repy_socket, self))
 
@@ -404,7 +404,7 @@ class HideSizeAffix(BaseAffix):
     """
 
     # Call the next layer of openconnection.
-    repy_socket = self.get_next_affix_layer().openconnection(destip, destport, localip, localport, timeout)
+    repy_socket = self.peek().openconnection(destip, destport, localip, localport, timeout)
 
     return HideSizeSocket(repy_socket, self)
 

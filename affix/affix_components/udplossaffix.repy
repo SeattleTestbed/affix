@@ -87,7 +87,7 @@ class UdpLossAffix(BaseAffix):
       return len(message)
 
     # Otherwise send the packet
-    return self.get_next_affix_layer().sendmessage(destip, destport, message, localip, localport)
+    return self.peek().sendmessage(destip, destport, message, localip, localport)
 
 
 
@@ -99,12 +99,12 @@ class UdpLossAffix(BaseAffix):
 
     # Drop the packet if the random float was less than the recv drop rate
     if number < self._recv_drop_rate:
-      msg = self.copy().get_next_affix_layer().udpserversocket_getmessage(udpserversocket)
+      msg = self.copy().peek().udpserversocket_getmessage(udpserversocket)
       raise SocketWouldBlockError
 
     # Otherwise recv the packet
     else:
-      return self.copy().get_next_affix_layer().udpserversocket_getmessage(udpserversocket)
+      return self.copy().peek().udpserversocket_getmessage(udpserversocket)
 
 
 
@@ -115,7 +115,7 @@ class UdpLossAffix(BaseAffix):
   
   def get_advertisement_string(self):
     #  UdpLossAffix is a one-sided affix, so it doesn't advertise itself
-    return self.get_next_affix_layer().get_advertisement_string()
+    return self.peek().get_advertisement_string()
 
 
   def copy(self):

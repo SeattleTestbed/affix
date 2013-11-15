@@ -182,7 +182,7 @@ class UdpOverTcpAffix(BaseAffix):
     local_key = str(localip)+':'+str(localport)
 
     # Ensure no other UDP sockets are using this IP and port.
-    udpserversock = self.get_next_affix_layer().listenformessage(localip, localport)
+    udpserversock = self.peek().listenformessage(localip, localport)
     self.udp_over_tcp_context['udp_server_socket_dict'][local_key] = udpserversock
 
     if self.tcpport:
@@ -191,7 +191,7 @@ class UdpOverTcpAffix(BaseAffix):
     for i in xrange(self.MAX_PORT_TRIES):
 
       try:
-        tcpserversocket = self.get_next_affix_layer().listenforconnection(localip, localport)
+        tcpserversocket = self.peek().listenforconnection(localip, localport)
 
       except (DuplicateTupleError, AlreadyListeningError), err:
         # Choose a random port out of the available ports.
@@ -237,7 +237,7 @@ class UdpOverTcpAffix(BaseAffix):
     while True:
 
       try:
-        (remote_ip, remote_port, repy_socket) = self.get_next_affix_layer().tcpserversocket_getconnection(tcpserversocket)
+        (remote_ip, remote_port, repy_socket) = self.peek().tcpserversocket_getconnection(tcpserversocket)
 
       except SocketWouldBlockError:
         sleep(_SLEEP_TIME)
@@ -300,7 +300,7 @@ class UdpOverTcpAffix(BaseAffix):
           # (65527 is the maximum size of a UDP packet payload in IPv6) 
           if len(self.udp_over_tcp_context['recv_buf'][repr(sockobj)]) > 65527:
             self.udp_over_tcp_context['recv_buf'][repr(sockobj)]= ""
-          self.udp_over_tcp_context['recv_buf'][repr(sockobj)] += self.get_next_affix_layer().socket_recv(sockobj, _RECV_BLOCK_SIZE)
+          self.udp_over_tcp_context['recv_buf'][repr(sockobj)] += self.peek().socket_recv(sockobj, _RECV_BLOCK_SIZE)
           made_progress = True
  
         # No data to read from socket.
@@ -349,7 +349,7 @@ class UdpOverTcpAffix(BaseAffix):
 
       for i in xrange(self.MAX_PORT_TRIES):
         try:
-          sockobj = self.get_next_affix_layer().openconnection(destip, destport, localip, localport, _TCP_TIMEOUT)
+          sockobj = self.peek().openconnection(destip, destport, localip, localport, _TCP_TIMEOUT)
         except (TimeoutError, ConnectionRefusedError):
           return sent_bytes
         except (DuplicateTupleError, AlreadyListeningError), err:
@@ -376,7 +376,7 @@ class UdpOverTcpAffix(BaseAffix):
       sockobj = self.udp_over_tcp_context['flow_dictionary'][remote_key]
 
     try:
-      sent_bytes += self.get_next_affix_layer().socket_send(sockobj, msg_block)
+      sent_bytes += self.peek().socket_send(sockobj, msg_block)
     except SocketWouldBlockError:
       return sent_bytes
     except SocketClosedLocal:  
@@ -447,4 +447,4 @@ class UdpOverTcpAffix(BaseAffix):
       affix_name = '(UdpOverTcpAffix,' + str(self.tcpport) + ')'
     else:
       affix_name = '(UdpOverTcpAffix)'
-    return affix_name + self.get_next_affix_layer().get_advertisement_string()
+    return affix_name + self.peek().get_advertisement_string()

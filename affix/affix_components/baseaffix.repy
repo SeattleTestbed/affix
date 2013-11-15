@@ -90,7 +90,12 @@ class BaseAffix:
 
     class MyAffix(BaseAffix):
       def copy(self):
-		mycopy = MyAffix(self.affix_context['next_affix'].copy(), self.affix_context['optional_args']
+        if self.affix_context['next_affix']:
+          next_affix = self.affix_context['next_affix'].copy()
+        else:
+          next_affix = None
+		
+        mycopy = MyAffix(next_affix, self.affix_context['optional_args']
         mycopy._internalstate = self._internalstate
         return mycopy
 
@@ -105,7 +110,7 @@ class BaseAffix:
 
     class MyAffix(BaseAffix):
       def get_advertisement_string(self):
-        return '(MyAffix,' + str(self._some_shared_state) + ')' + self.get_next_affix_layer().get_advertisement_string()
+        return '(MyAffix,' + str(self._some_shared_state) + ')' + self.peek().get_advertisement_string()
 
     If the subclass affix is not meant to be public, then simply return an empty
     string.
@@ -116,11 +121,11 @@ class BaseAffix:
 
 
 
-  # ===============================================================================
-  # This is a public method that is used to retrieve the next layer of affix.
-  # ===============================================================================
+  # =========================================================================
+  # These are public methods that are used to view or modify the AFFIX stack.
+  # =========================================================================
  
-  def get_next_affix_layer(self):
+  def peek(self):
     """
     <Purpose>
       Peek into the affix stack and return the next layer
@@ -155,6 +160,71 @@ class BaseAffix:
 
 
 
+  def pop(self):
+    """
+    <Purpose>
+      Remove and return the nex affix layer from the AFFIX stack.
+      If stack is empty, it raises an error
+
+    <Arguments>
+      None
+
+    <Side Effects>
+      Stack gets modified.
+
+    <Exception>
+      AffixStackError - raised if the affix stack is empty.
+
+    <Return>
+      The next AFFIX object in the stack.
+    """
+
+    # We make a reference to the next AFFIX that lies in the stack
+    # and point our next_affix pointer to the next_affix of the 
+    # next_affix. Example: 
+    # Originally : A->B->C->Null
+    # Finally: A->C->Null,  B->Null
+    next_affix = self.peek()
+    next_next_affix = next_affix.peek()
+    self.affix_context['next_affix'] = next_next_affix
+
+    # We point the next AFFIX for the return object to null so
+    # the popped AFFIX object no longer has any reference to any
+    # of the AFFIXs in the stack.
+    next_affix.affix_context['next_affix'] = None
+
+    return next_affix
+    
+
+
+
+  def push(self, new_affix_object):
+    """
+    <Purpose>
+      Add the new_affix_object underneath the current AFFIX object.
+
+    <Arguments>
+      new_affix_object - the affix that needs to be added to the stack.
+
+    <Side Effects>
+      The stack of the current top affix gets modified
+
+    <Exceptions>
+      AffixStackError - raised if unable to add affix_object to stack.
+    
+    <Return>
+      None
+    """
+    
+    # We point the new_affix_object to our next_affix and then point
+    # ourself to the new_affix_object.
+    next_affix_object = self.peek()
+    new_affix_object.affix_context['next_affix'] = next_affix_object
+    self.affix_context['next_affix'] = new_affix_object
+
+
+
+
   # ============================================================================
   # Public methods that directly interface with the application. The methods may
   # be overwritten by the affix objects that inherit the base affix. If the methods
@@ -163,12 +233,12 @@ class BaseAffix:
   # ===========================================================================
 
   def sendmessage(self, destip, destport, message, localip, localport):
-    return self.get_next_affix_layer().sendmessage(destip, destport, message, localip, localport)
+    return self.peek().sendmessage(destip, destport, message, localip, localport)
 
 
 
   def listenformessage(self, localip, localport):
-    next_layer_socket = self.get_next_affix_layer().listenformessage(localip, localport)
+    next_layer_socket = self.peek().listenformessage(localip, localport)
     return AffixUDPServerSocket(next_layer_socket, self)
 
 
@@ -177,7 +247,7 @@ class BaseAffix:
     # We make a copy of ourselves before we do anything as we may have multiple
     # openconnection calls that return multiple real sockets.
     #this_affix_copy = self.copy()
-    next_sockobj = self.get_next_affix_layer().openconnection(destip, destport, localip, localport, timeout)
+    next_sockobj = self.peek().openconnection(destip, destport, localip, localport, timeout)
     
     return AffixSocket(next_sockobj, self)
 
@@ -186,23 +256,23 @@ class BaseAffix:
   def listenforconnection(self, localip, localport):
     # TODO: Not sure if we have to make a copy of self before retrieving
     # the next layer.
-    next_layer_socket = self.get_next_affix_layer().listenforconnection(localip, localport)
+    next_layer_socket = self.peek().listenforconnection(localip, localport)
     return AffixTCPServerSocket(next_layer_socket, self)
 
 
 
   def socket_close(self, socket):
-    return self.get_next_affix_layer().socket_close(socket)
+    return self.peek().socket_close(socket)
 
 
 
   def socket_send(self, socket, msg):
-    return self.get_next_affix_layer().socket_send(socket, msg)
+    return self.peek().socket_send(socket, msg)
 
 
 
   def socket_recv(self, socket, bytes):
-    return self.get_next_affix_layer().socket_recv(socket, bytes)
+    return self.peek().socket_recv(socket, bytes)
 
 
 
@@ -212,25 +282,25 @@ class BaseAffix:
     # individual socket may each modify the affix stack 
     # below it differently. 
     this_affix_copy = self.copy()
-    (remote_ip, remote_port, repy_socket) = this_affix_copy.get_next_affix_layer().tcpserversocket_getconnection(tcpserversocket)
+    (remote_ip, remote_port, repy_socket) = this_affix_copy.peek().tcpserversocket_getconnection(tcpserversocket)
 
     return (remote_ip, remote_port, AffixSocket(repy_socket, self))
 
 
 
   def tcpserversocket_close(self, tcpserversocket):
-    return self.get_next_affix_layer().tcpserversocket_close(tcpserversocket)
+    return self.peek().tcpserversocket_close(tcpserversocket)
 
 
 
   def udpserversocket_getmessage(self, udpserversocket):
-    return self.copy().get_next_affix_layer().udpserversocket_getmessage(udpserversocket)
+    return self.copy().peek().udpserversocket_getmessage(udpserversocket)
 
 
 
   def udpserversocket_close(self, udpserversocket):
-    return self.get_next_affix_layer().udpserversocket_close(udpserversocket)
+    return self.peek().udpserversocket_close(udpserversocket)
 
 
   def __str__(self):
-    return '(%s)' % repr(self).replace(' instance at', '') + str(self.get_next_affix_layer())
+    return '(%s)' % repr(self).replace(' instance at', '') + str(self.peek())

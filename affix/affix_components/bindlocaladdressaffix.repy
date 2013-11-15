@@ -87,9 +87,9 @@ class BindLocalAddressAffix(BaseAffix):
 
     # Check if an alternate localip and port has been specified
     if self.bind_localip and self.bind_localport:
-      next_sockobj = self.get_next_affix_layer().openconnection(destip, destport, self.bind_localip, self.bind_localport, timeout)
+      next_sockobj = self.peek().openconnection(destip, destport, self.bind_localip, self.bind_localport, timeout)
     else:
-      next_sockobj = self.get_next_affix_layer().openconnection(destip, destport, localip, localport, timeout)
+      next_sockobj = self.peek().openconnection(destip, destport, localip, localport, timeout)
 
     return AffixSocket(next_sockobj, self)
 
@@ -119,9 +119,9 @@ class BindLocalAddressAffix(BaseAffix):
 
     # Check if an alternate localip and port has been specified
     if self.bind_localip and self.bind_localport:
-      byte_sent = self.get_next_affix_layer().sendmessage(destip, destport, message, self.bind_localip, self.bind_localport)
+      byte_sent = self.peek().sendmessage(destip, destport, message, self.bind_localip, self.bind_localport)
     else:
-      byte_sent = self.get_next_affix_layer().sendmessage(destip, destport, message, localip, localport)
+      byte_sent = self.peek().sendmessage(destip, destport, message, localip, localport)
 
     return byte_sent
     
@@ -150,4 +150,4 @@ class BindLocalAddressAffix(BaseAffix):
     to advertise itself.
     """
 
-    return self.get_next_affix_layer().get_advertisement_string() 
+    return self.peek().get_advertisement_string() 

@@ -34,12 +34,12 @@ class AsciiShiftingAffix(BaseAffix):
 
   def socket_send(self, socket, data):
     data = self._shift_ascii(data, 1)
-    return self.get_next_affix_layer().socket_send(socket, data)
+    return self.peek().socket_send(socket, data)
 
 
 
   def socket_recv(self, socket, bytes):
-    data = self.get_next_affix_layer().socket_recv(socket, bytes)
+    data = self.peek().socket_recv(socket, bytes)
     return self._shift_ascii(data, -1)
 
 
@@ -50,4 +50,4 @@ class AsciiShiftingAffix(BaseAffix):
 
   
   def get_advertisement_string(self):
-    return '(AsciiShiftingAffix)' + self.get_next_affix_layer().get_advertisement_string()
+    return '(AsciiShiftingAffix)' + self.peek().get_advertisement_string()

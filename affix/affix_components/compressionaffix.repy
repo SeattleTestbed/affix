@@ -483,7 +483,7 @@ class CompressionAffix(BaseAffix):
     else:
       affix_name += ')'
 
-    return affix_name + self.get_next_affix_layer().get_advertisement_string()
+    return affix_name + self.peek().get_advertisement_string()
 
 
   # =========================================================
@@ -492,14 +492,14 @@ class CompressionAffix(BaseAffix):
 
   def tcpserversocket_getconnection(self, tcpserversocket):
     # Call the next layer of tcpserver_getconnection()
-    (remote_ip, remote_port, repy_socket) = self.get_next_affix_layer().tcpserversocket_getconnection(tcpserversocket)
+    (remote_ip, remote_port, repy_socket) = self.peek().tcpserversocket_getconnection(tcpserversocket)
 
     return (remote_ip, remote_port, CompressionSocket(repy_socket, self))
 
 
   def openconnection(self, destip, destport, localip, localport, timeout):
     # Call the next layer of openconnection.
-    repy_socket = self.get_next_affix_layer().openconnection(destip, destport, localip, localport, timeout)
+    repy_socket = self.peek().openconnection(destip, destport, localip, localport, timeout)
 
     return CompressionSocket(repy_socket, self)
 
@@ -544,7 +544,7 @@ class CompressionAffix(BaseAffix):
 
     """
     short_msg = zlib.compress(message)
-    sent_length = self.get_next_affix_layer().sendmessage(destip, destport, short_msg, localip, localport)
+    sent_length = self.peek().sendmessage(destip, destport, short_msg, localip, localport)
 
     # Return the length of the original message only if it is sent in its
     # entirety.
@@ -574,7 +574,7 @@ class CompressionAffix(BaseAffix):
     """
     while True:
 
-      (remote_ip, remote_port, compressed_msg) = self.get_next_affix_layer().udpserversocket_getmessage(udpserversocket)
+      (remote_ip, remote_port, compressed_msg) = self.peek().udpserversocket_getmessage(udpserversocket)
 
       try:
         return (remote_ip, remote_port, zlib.decompress(compressed_msg))

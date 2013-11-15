@@ -120,7 +120,7 @@ class LegacyAffix(BaseAffix):
     """
     tcpserversocket_dict = {}
 
-    tcpserversocket_dict['affix_tcpsocket'] = self.get_next_affix_layer().listenforconnection(localip, self.tcp_listenport)
+    tcpserversocket_dict['affix_tcpsocket'] = self.peek().listenforconnection(localip, self.tcp_listenport)
     tcpserversocket_dict['repy_tcpsocket'] = listenforconnection(localip, localport)
 
     return LegacyAffixTCPServerSocket(tcpserversocket_dict, self)
@@ -143,7 +143,7 @@ class LegacyAffix(BaseAffix):
     # First try to open a connection using our affix stack. If we get a ConnectionRefusedError
     # or a DuplicateTupleError, then we default to the repy openconnection.
     try:
-      return AffixSocket(self.get_next_affix_layer().openconnection(destip, self.tcp_listenport, localip, localport, timeout), self)
+      return AffixSocket(self.peek().openconnection(destip, self.tcp_listenport, localip, localport, timeout), self)
     except (DuplicateTupleError, ConnectionRefusedError):
       pass
     return openconnection(destip, destport, localip, localport, timeout)
@@ -157,4 +157,4 @@ class LegacyAffix(BaseAffix):
 
   
   def get_advertisement_string(self):
-    return '(LegacyAffix,%d,%d)' % (self.tcp_listenport, self.udp_listenport) + self.get_next_affix_layer().get_advertisement_string()
+    return '(LegacyAffix,%d,%d)' % (self.tcp_listenport, self.udp_listenport) + self.peek().get_advertisement_string()

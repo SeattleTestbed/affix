@@ -105,7 +105,7 @@ class RateLimitAffix(BaseAffix):
     self.consume_resource('netsend', 0)
     self.consume_resource('netrecv', 0)
 
-    sockobj = self.get_next_affix_layer().openconnection(destip, destport, localip, localport, timeout)
+    sockobj = self.peek().openconnection(destip, destport, localip, localport, timeout)
 
     self.consume_resource('netsend', 128)
     self.consume_resource('netrecv', 64)
@@ -125,7 +125,7 @@ class RateLimitAffix(BaseAffix):
     self.consume_resource('netsend', 0)
     self.consume_resource('netrecv', 0)
 
-    (remote_ip, remote_port, repy_socket) = self.get_next_affix_layer().tcpserversocket_getconnection(tcpserversocket)
+    (remote_ip, remote_port, repy_socket) = self.peek().tcpserversocket_getconnection(tcpserversocket)
 
     self.consume_resource('netsend', 64)
     self.consume_resource('netrecv', 128)
@@ -143,7 +143,7 @@ class RateLimitAffix(BaseAffix):
     self.consume_resource('netsend', 0)
     self.consume_resource('netrecv', 0)
 
-    data_sent = self.get_next_affix_layer().socket_send(socket, msg)
+    data_sent = self.peek().socket_send(socket, msg)
 
     # Consume amount of netsend equal to the amount of data sent
     # plus 64.
@@ -165,7 +165,7 @@ class RateLimitAffix(BaseAffix):
     self.consume_resource('netsend', 0)
     self.consume_resource('netrecv', 0)
 
-    data_recv = self.get_next_affix_layer().socket_recv(socket, bytes)
+    data_recv = self.peek().socket_recv(socket, bytes)
 
     # Consume the amount of netrecv equal to the amount of data received
     # plus 64.
@@ -186,7 +186,7 @@ class RateLimitAffix(BaseAffix):
     self.consume_resource('netsend', 0)
     self.consume_resource('netrecv', 0)
 
-    return_val = self.get_next_affix_layer().socket_close(socket)
+    return_val = self.peek().socket_close(socket)
 
     self.consume_resource('netsend', 128)
     self.consume_resource('netrecv', 64)
@@ -208,7 +208,7 @@ class RateLimitAffix(BaseAffix):
     """
     self.consume_resource('netsend', 0)
 
-    data_sent = self.get_next_affix_layer().sendmessage(destip, destport, message, localip, localport)
+    data_sent = self.peek().sendmessage(destip, destport, message, localip, localport)
  
     # Consume the amount of data sent + 64 bytes.
     self.consume_resource('netsend', data_sent +64)
@@ -227,7 +227,7 @@ class RateLimitAffix(BaseAffix):
     """
     self.consume_resource('netrecv', 0)
 
-    msg = self.get_next_affix_layer().udpserversocket_getmessage(udpserversocket)
+    msg = self.peek().udpserversocket_getmessage(udpserversocket)
 
     # Consume the length of the message + 64 bytes.
     self.consume_resource('netrecv', len(msg) + 64)
@@ -393,4 +393,4 @@ class RateLimitAffix(BaseAffix):
     The RateLimitAffix is an one sided affix, which means it
     doesn't need to advertise itself.
     """
-    return self.get_next_affix_layer().get_advertisement_string()
+    return self.peek().get_advertisement_string()

@@ -488,7 +488,7 @@ class NatPunchAffix(BaseAffix):
     else:
       nat_ad_string = "(NatPunchAffix)"
 
-    return nat_ad_string + self.get_next_affix_layer().get_advertisement_string()
+    return nat_ad_string + self.peek().get_advertisement_string()
 
 
 

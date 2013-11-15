@@ -107,7 +107,7 @@ class MobileSocket:
     # References to the internal state of the Affix Socket
     self._socket = affix_socket._socket
     self._affix_object = affix_socket._affix_object
-    self._next_affix = self._affix_object.get_next_affix_layer()
+    self._next_affix = self._affix_object.peek()
     
     self._openconnection_arg_list = openconnection_arg_list
     self._connection_id = connection_id

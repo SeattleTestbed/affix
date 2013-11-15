@@ -70,7 +70,7 @@ class HelloWorldDeciderAffix(BaseAffix):
 
     # Push the new HelloWorldAffix on to the stack of the copied affix.
     this_affix_copy.affix_context['affix_stack'].push(new_affix)
-    (remote_ip, remote_port, repy_socket) = this_affix_copy.get_next_affix_layer().tcpserversocket_getconnection(tcpserversocket)
+    (remote_ip, remote_port, repy_socket) = this_affix_copy.peek().tcpserversocket_getconnection(tcpserversocket)
 
     return (remote_ip, remote_port, AffixSocket(repy_socket, this_affix_copy))
 
@@ -103,7 +103,7 @@ class HelloWorldDeciderAffix(BaseAffix):
 
     # Push the new HelloWorldAffix on to the stack of the copied affix.
     this_affix_copy.affix_context['affix_stack'].push(new_affix)
-    next_sockobj = self.get_next_affix_layer().openconnection(destip, destport, localip, localport, timeout)
+    next_sockobj = self.peek().openconnection(destip, destport, localip, localport, timeout)
 
     return AffixSocket(next_sockobj, this_affix_copy)
 
@@ -129,4 +129,4 @@ class HelloWorldDeciderAffix(BaseAffix):
     """
     The get_advertisement_string is implemented.
     """
-    return '(HelloWorldDeciderAffix)' + self.get_next_affix_layer().get_advertisement_string()
+    return '(HelloWorldDeciderAffix)' + self.peek().get_advertisement_string()

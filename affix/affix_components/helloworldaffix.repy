@@ -61,7 +61,7 @@ class HelloWorldAffix(BaseAffix):
       msg = "HelloWorldSendTAG:::%s@" % self.private_num + msg 
     else:
       msg = "HelloWorldSendTAG@" + msg
-    next_layer = self.get_next_affix_layer()
+    next_layer = self.peek()
 
     return next_layer.socket_send(socket, msg)
 
@@ -75,7 +75,7 @@ class HelloWorldAffix(BaseAffix):
     bytes = bytes + len("HelloWorldSendTAG@")
 
     if len(self.recv_buffer) < bytes:
-      self.recv_buffer += self.get_next_affix_layer().socket_recv(socket, bytes)
+      self.recv_buffer += self.peek().socket_recv(socket, bytes)
 
 
     # The receive also tags on a little message.
@@ -107,4 +107,4 @@ class HelloWorldAffix(BaseAffix):
       affix_name = '(HelloWorldAffix,' + str(self.private_num) + ')'
     else:
       affix_name = '(HelloWorldAffix)'
-    return affix_name + self.get_next_affix_layer().get_advertisement_string()
+    return affix_name + self.peek().get_advertisement_string()

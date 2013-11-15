@@ -86,7 +86,7 @@ class MobileTCPServerSocket:
     # References to the internal state of the TCP server socket.
     self._socket = affixtcpserversocket._socket
     self._affix_object = affixtcpserversocket._affix_object
-    self._next_affix = self._affix_object.get_next_affix_layer()
+    self._next_affix = self._affix_object.peek()
 
     # IP and port on which the initial listener was created.
     self._listen_ip = listen_ip
@@ -321,7 +321,7 @@ class MobileUDPServerSocket:
     # References to the internal state of the TCP server socket.
     self._socket = affixudpserversocket._socket
     self._affix_object = affixudpserversocket._affix_object
-    self._next_affix = self._affix_object.get_next_affix_layer()
+    self._next_affix = self._affix_object.peek()
 
     # IP and port on which the initial listener was created.
     self._listen_ip = listen_ip
@@ -469,7 +469,7 @@ class MobilityAffix(BaseAffix):
       finally:
         server_socket._server_socket_lock.release()
 
-    next_layer_socket = self.get_next_affix_layer().listenforconnection(localip, localport)
+    next_layer_socket = self.peek().listenforconnection(localip, localport)
     affix_sock = AffixTCPServerSocket(next_layer_socket, self)
     mobile_sock = MobileTCPServerSocket(affix_sock, _check_current_ip(), localport)
     self._server_socket_dict[identity] = mobile_sock
@@ -503,7 +503,7 @@ class MobilityAffix(BaseAffix):
       start_time = getruntime()
 
       try:
-        next_sockobj = self.get_next_affix_layer().openconnection(destip, destport, localip, localport, timeout)
+        next_sockobj = self.peek().openconnection(destip, destport, localip, localport, timeout)
       except (ConnectionRefusedError, InternetConnectivityError), err:
         pass
       except Exception, err:
@@ -576,7 +576,7 @@ class MobilityAffix(BaseAffix):
 
 
   def listenformessage(self, localip, localport):
-    next_layer_socket = self.get_next_affix_layer().listenformessage(localip, localport)
+    next_layer_socket = self.peek().listenformessage(localip, localport)
     affix_sock = AffixUDPServerSocket(next_layer_socket, self)
     return MobileUDPServerSocket(affix_sock, _check_current_ip(), localport)
 
@@ -608,4 +608,4 @@ class MobilityAffix(BaseAffix):
   
   def get_advertisement_string(self):
     affix_name = '(MobilityAffix)'
-    return affix_name + self.get_next_affix_layer().get_advertisement_string()
+    return affix_name + self.peek().get_advertisement_string()
