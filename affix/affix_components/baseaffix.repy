@@ -64,7 +64,7 @@ class BaseAffix:
     try:
       if next_affix:
         assert(isinstance(next_affix, BaseAffix))
-    except:
+    except AssertionError:
       err = "Bad arg provided. next_affix must be of type BaseAffix."
       err += " Type provided: '%s'" % str(type(next_affix))
       raise AffixArgumentError(err)

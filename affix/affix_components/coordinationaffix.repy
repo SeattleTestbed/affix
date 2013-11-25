@@ -40,6 +40,7 @@ dy_import_module_symbols("affixstackinterface")
 # Whether we want to print debug statements.
 _COORDINATION_AFFIX_DEBUG_MODE = True
 
+zenodotus_subdomain = 'zenodotus.poly.edu'
 
 class CoordinationAffix(BaseAffix):
 
@@ -69,7 +70,7 @@ class CoordinationAffix(BaseAffix):
       self.localhost = optional_args[0] 
       assert(isinstance(self.localhost, str))
     else:
-      self.localhost = getmyip()
+      self.localhost = None
         
 
 
@@ -121,7 +122,7 @@ class CoordinationAffix(BaseAffix):
     # If we are listening on a zenodotus name, first translate it to the local
     # IP and start the advertisement thread that constantly announces the
     # zenodotus name -> IP mapping.
-    if localhost.endswith('.zenodotus.cs.washington.edu'):
+    if localhost.endswith(zenodotus_subdomain):
       try:
         localip = getmyip()
       except InternetConnectivityError:
@@ -135,7 +136,12 @@ class CoordinationAffix(BaseAffix):
 
     # The underlying affix stack has been built completely. We can advertise the
     # affix stack.
-    adv_key = str(localhost) + ',' + str(localport) + ',TCP'
+    if self.localhost:
+      hostname = self.localhost
+    else:
+      hostname = localhost
+
+    adv_key = str(hostname) + ',' + str(localport) + ',TCP'
     adv_value = self.peek().get_advertisement_string()
     if _COORDINATION_AFFIX_DEBUG_MODE:
       log('CoordinationAffix: Advertised', adv_key, adv_value, '\n')

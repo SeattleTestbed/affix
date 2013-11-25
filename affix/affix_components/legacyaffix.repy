@@ -57,7 +57,7 @@ class LegacyAffix(BaseAffix):
 
   """
 
-  def __init__(self, affix_stack=AffixStack(), optional_args=None):
+  def __init__(self, next_affix=None, optional_args=None):
     """
     <Purpose>
       Initialize the LegacyAffix with the appropriate affix stack 
@@ -88,16 +88,20 @@ class LegacyAffix(BaseAffix):
 
     if optional_args:
       assert(isinstance(optional_args, list)), "Bad optional args. Optional arg must be a list."
-      assert(len(optional_args) == 2), "Bad optional args. Must provide tcp/udp port numbers for the legacy affix to listen on."
+      assert(len(optional_args) == 4), "Bad optional args. Must provide tcp/udp port numbers and AFFIX stack for the legacy affix to listen on."
 
       try:
-        self.tcp_listenport = int(optional_args[0])
-        self.udp_listenport = int(optional_args[1])
+        self.server_name = optional_args[0]
+        self.tcp_listenport = int(optional_args[1])
+        self.udp_listenport = int(optional_args[2])
+        self.affix_string = optional_args[3]
       except ValueError:
         raise AffixInternalError("TCP or UDP listenport provided is not of type int.")
-
-
-    BaseAffix.__init__(self, affix_stack, optional_args)
+      
+      # We build a new stack for the branch that accepts AFFIX connections.
+      self.affix_stack_branch = AffixStack(self.affix_string, self.server_name)
+                                        
+    BaseAffix.__init__(self, next_affix, optional_args)
 
 
 
@@ -120,7 +124,7 @@ class LegacyAffix(BaseAffix):
     """
     tcpserversocket_dict = {}
 
-    tcpserversocket_dict['affix_tcpsocket'] = self.peek().listenforconnection(localip, self.tcp_listenport)
+    tcpserversocket_dict['affix_tcpsocket'] = self.affix_stack_branch.peek().listenforconnection(localip, self.tcp_listenport)
     tcpserversocket_dict['repy_tcpsocket'] = listenforconnection(localip, localport)
 
     return LegacyAffixTCPServerSocket(tcpserversocket_dict, self)
@@ -142,19 +146,33 @@ class LegacyAffix(BaseAffix):
 
     # First try to open a connection using our affix stack. If we get a ConnectionRefusedError
     # or a DuplicateTupleError, then we default to the repy openconnection.
+    # We have already created a new stack for the Legacy AFFIX branch and if
+    # we did a proper lookup in the root CoordinationAffix, the new stack
+    # 'should' only consist of a new CoordinationAffix. Thus we pass in
+    # the server name and the tcp port that the Legacy AFFIX branch on the
+    # server side is listening on.
     try:
-      return AffixSocket(self.peek().openconnection(destip, self.tcp_listenport, localip, localport, timeout), self)
+      sockobj = self.affix_stack_branch.peek().openconnection(self.server_name, self.tcp_listenport, localip, localport, timeout)
+      return AffixSocket(sockobj, self)
     except (DuplicateTupleError, ConnectionRefusedError):
       pass
+    
+    # If we failed to use the Legacy AFFIX branch, we try a normal openconnection
+    # and try to connect to the legacy branch that is not using AFFIX.
     return openconnection(destip, destport, localip, localport, timeout)
       
 
 
 
   def copy(self):
-    return LegacyAffix(self.affix_context['affix_stack'].deepcopy(), self.affix_context['optional_args'])
+    if self.affix_context['next_affix']:
+      next_affix_copy = self.affix_context['next_affix'].copy()
+    else:
+      next_affix_copy = None
+    return LegacyAffix(next_affix_copy, self.affix_context['optional_args'])
+    
 
 
   
   def get_advertisement_string(self):
-    return '(LegacyAffix,%d,%d)' % (self.tcp_listenport, self.udp_listenport) + self.peek().get_advertisement_string()
+    return '(LegacyAffix,%s,%d,%d,(CoordinationAffix))' % (self.server_name, self.tcp_listenport, self.udp_listenport)
