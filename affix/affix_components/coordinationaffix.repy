@@ -181,7 +181,7 @@ class CoordinationAffix(BaseAffix):
 
 
 
-  def openconnection(self, destip, destport, localip, localport, timeout):
+  def openconnection(self, desthost, destport, localip, localport, timeout):
     """
     <Purpose>
       Looks up the string representation of the server's affix stack. Constructs
@@ -205,8 +205,17 @@ class CoordinationAffix(BaseAffix):
     # Keep track of how much time we have spent to avoid exceeding the timeout.
     start_time = getruntime()
 
+
+    # If we are provided a zenodotus name, we will convert it to an IP
+    # address.
+    if desthost.endswith(zenodotus_subdomain):
+      destip = gethostbyname(desthost)
+    else:
+      destip = desthost
+
+
     # Look up the server's affix stack under this key.
-    server_key = str(destip) + ',' + str(destport) + ',TCP'
+    server_key = str(desthost) + ',' + str(destport) + ',TCP'
     lookup_result_list = LookupCache().lookup(server_key)
 
     if _COORDINATION_AFFIX_DEBUG_MODE:
