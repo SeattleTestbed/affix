@@ -1,6 +1,6 @@
 """
 <Program Name>
-  affix_python_tcp_benchmark.py
+  affix_python_udp_benchmark.py
 
 <Author>
   Monzur Muhammad
@@ -11,11 +11,11 @@
 
 <Purpose>
   This is a test file that will be used for benchmarking
-  tcp connectivity over the loopback interface using 
+  udp connectivity over the loopback interface using 
   different data blocks.
 
 <Usage>
-  $ python affix_python_tcp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB)
+  $ python affix_repy_udp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB)
 """
 import sys
 import time
@@ -23,6 +23,9 @@ import threading
 import random
 import socket
 
+from repyportability import *
+_context = locals()
+add_dy_support(_context)
 
 # 1KB string size.
 random_string = 'a'
@@ -30,7 +33,7 @@ random_string = 'a'
 
 block_size = 1024 
 start_time = 0
-sleep_time = 0.000001
+sleep_time = 0.00001
 
 FIN_TAG="@FIN"
 total_data_sent = 0
@@ -50,23 +53,30 @@ class server(threading.Thread):
   def run(self):
     # Create a new server socket and accept a connection when
     # there is an incoming connection.
-    sock_server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock_server.bind((server_address, port))
-    sock_server.setblocking(0)
+    sock_server = listenformessage(server_address, port)
 
     # Now that we have accepted the connection, we will 
     recv_msg = ''
     data_recv_len = 0
+    last_data_recv_time = time.time()
     while True:
       try:
-        cur_msg, addr = sock_server.recvfrom(block_size)
+        rip, rport, cur_msg = sock_server.getmessage()
+        #last_data_recv_time = time.time()
         if FIN_TAG in cur_msg:
+          print "Received Fin packet."
           break
         data_recv_len += len(cur_msg)
         recv_msg += cur_msg
-      except socket.error:
+      except SocketWouldBlockError:
+        #cur_time = time.time()
+        # If we haven't received data for the last 2 seconds,
+        # we will break.
+        #if (cur_time - last_data_recv_time) > 3:
+        #  break
         time.sleep(sleep_time)
-        
+ 
+
     sock_server.close()
     total_run_time = time.time() - start_time
     
@@ -87,7 +97,6 @@ def main():
   global block_size
   global start_time
   global total_data_sent
-  global start_time
 
   if len(sys.argv) < 3:
     print "  $ python affix_python_tcp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB)"
@@ -108,9 +117,9 @@ def main():
   new_server.start()
   time.sleep(2)
 
-  # Create a client socket and connect to the server. Following
-  # the connection, send data repeatedly until we have sent
-  # sufficient ammount.
+  # Send data repeatedly until we have sent
+  # sufficient ammount through UDP.
+
   sockobj = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
   sockobj.setblocking(0)
 
@@ -120,7 +129,7 @@ def main():
       total_data_sent += sockobj.sendto(repeat_data, (server_address, port))
     except socket.error:
       time.sleep(sleep_time)
-      pass
+
 
   # Send a signal telling the server we are done sending data.
   # We send it multiple times in case of packet loss.
@@ -129,11 +138,8 @@ def main():
       sockobj.sendto(FIN_TAG, (server_address, port))
     except socket.error:
       time.sleep(sleep_time)
-    
 
   sockobj.close()
-  
-
 
 
 if __name__ == '__main__':

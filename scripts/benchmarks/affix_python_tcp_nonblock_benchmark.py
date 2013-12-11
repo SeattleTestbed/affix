@@ -24,7 +24,8 @@ import random
 import socket
 
 # 1KB string size.
-random_string = 'abcdefgh' * 128
+random_string = 'a'
+#random_string = 'abcdefgh' * 128
 
 block_size = 1024 
 start_time = 0
@@ -102,11 +103,10 @@ def main():
 
   # Extract the user input to figure out what the block size will be 
   # and how much data to send in total.
-  block_multiplier = int(sys.argv[1])
+  block_size = int(sys.argv[1])
   data_length = int(sys.argv[2]) * 1024 * 1024
 
-  repeat_data = random_string * block_multiplier
-  block_size = block_size * block_multiplier
+  repeat_data = random_string * block_size
   
   total_sent = 0
 

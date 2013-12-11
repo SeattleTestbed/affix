@@ -1,6 +1,6 @@
 """
 <Program Name>
-  affix_python_tcp_benchmark.py
+  affix_python_udp_benchmark.py
 
 <Author>
   Monzur Muhammad
@@ -11,11 +11,11 @@
 
 <Purpose>
   This is a test file that will be used for benchmarking
-  tcp connectivity over the loopback interface using 
+  udp connectivity over the loopback interface using 
   different data blocks.
 
 <Usage>
-  $ python affix_python_tcp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB)
+  $ python affix_repy_udp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB)
 """
 import sys
 import time
@@ -23,6 +23,9 @@ import threading
 import random
 import socket
 
+from repyportability import *
+_context = locals()
+add_dy_support(_context)
 
 # 1KB string size.
 random_string = 'a'
@@ -30,7 +33,7 @@ random_string = 'a'
 
 block_size = 1024 
 start_time = 0
-sleep_time = 0.000001
+sleep_time = 0.00001
 
 FIN_TAG="@FIN"
 total_data_sent = 0
@@ -66,7 +69,7 @@ class server(threading.Thread):
         recv_msg += cur_msg
       except socket.error:
         time.sleep(sleep_time)
-        
+
     sock_server.close()
     total_run_time = time.time() - start_time
     
@@ -87,7 +90,6 @@ def main():
   global block_size
   global start_time
   global total_data_sent
-  global start_time
 
   if len(sys.argv) < 3:
     print "  $ python affix_python_tcp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB)"
@@ -108,31 +110,23 @@ def main():
   new_server.start()
   time.sleep(2)
 
-  # Create a client socket and connect to the server. Following
-  # the connection, send data repeatedly until we have sent
-  # sufficient ammount.
-  sockobj = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-  sockobj.setblocking(0)
+  # Send data repeatedly until we have sent
+  # sufficient ammount through UDP.
 
   start_time = time.time()
+  myip = server_address
   while total_data_sent < data_length:
     try:
-      total_data_sent += sockobj.sendto(repeat_data, (server_address, port))
-    except socket.error:
+      total_data_sent += sendmessage(server_address, port, repeat_data, myip, port+1)
+    except SocketWouldBlockError:
       time.sleep(sleep_time)
       pass
-
   # Send a signal telling the server we are done sending data.
-  # We send it multiple times in case of packet loss.
   for i in range(10):
     try:
-      sockobj.sendto(FIN_TAG, (server_address, port))
-    except socket.error:
+      sendmessage(server_address, port, FIN_TAG, myip, port+1)
+    except SocketWouldBlockError:
       time.sleep(sleep_time)
-    
-
-  sockobj.close()
-  
 
 
 

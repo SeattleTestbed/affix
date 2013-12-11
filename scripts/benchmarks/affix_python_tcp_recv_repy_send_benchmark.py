@@ -1,6 +1,6 @@
 """
 <Program Name>
-  affix_python_tcp_benchmark.py
+  affix_repy_tcp_benchmark.py
 
 <Author>
   Monzur Muhammad
@@ -12,7 +12,7 @@
 <Purpose>
   This is a test file that will be used for benchmarking
   tcp connectivity over the loopback interface using 
-  different data blocks.
+  different data blocks for Repy.
 
 <Usage>
   $ python affix_python_tcp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB)
@@ -23,6 +23,9 @@ import threading
 import random
 import socket
 
+from repyportability import *
+_context = locals()
+add_dy_support(_context)
 
 # 1KB string size.
 random_string = 'a'
@@ -30,10 +33,9 @@ random_string = 'a'
 
 block_size = 1024 
 start_time = 0
-sleep_time = 0.000001
+sleep_time = 0.0001
 
 FIN_TAG="@FIN"
-total_data_sent = 0
 
 port = 12345
 server_address = '127.0.0.1'
@@ -50,31 +52,44 @@ class server(threading.Thread):
   def run(self):
     # Create a new server socket and accept a connection when
     # there is an incoming connection.
-    sock_server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock_server.bind((server_address, port))
+    sock_server.listen(5)
     sock_server.setblocking(0)
 
+    # Accept each incoming connection and launch a new client
+    # benchmark thread that will time how long it took to 
+    # receive all the data.
+    while True:
+      try:
+        (clientsocket, address) = sock_server.accept()
+        print "Accepted conn from: " + str(address)
+        break
+      except socket.error:
+        time.sleep(sleep_time)
+
+
     # Now that we have accepted the connection, we will 
+    recv_start_time = time.time()
     recv_msg = ''
     data_recv_len = 0
     while True:
       try:
-        cur_msg, addr = sock_server.recvfrom(block_size)
+        cur_msg = clientsocket.recv(block_size)
         if FIN_TAG in cur_msg:
           break
         data_recv_len += len(cur_msg)
         recv_msg += cur_msg
       except socket.error:
         time.sleep(sleep_time)
-        
-    sock_server.close()
+
+
+    total_recv_time = time.time() - recv_start_time
     total_run_time = time.time() - start_time
     
-    print "Time to receive: %s" % str(total_run_time)
+    print "Time to receive: %s\nTotal time: %s" % (str(total_recv_time), str(total_run_time))
     print "Total data received: %d KB. \nThroughput: %s KB/s" % (data_recv_len/1024, str(data_recv_len/total_run_time/1024))
 
-    total_data_loss = total_data_sent - data_recv_len
-    print "Data loss: %d KB\nLoss rate: %s%%" % (total_data_loss/1024, str((total_data_loss*1.0/total_data_sent*100)))
 
 
 
@@ -85,8 +100,6 @@ def main():
     the server across the loopback address.
   """
   global block_size
-  global start_time
-  global total_data_sent
   global start_time
 
   if len(sys.argv) < 3:
@@ -111,28 +124,27 @@ def main():
   # Create a client socket and connect to the server. Following
   # the connection, send data repeatedly until we have sent
   # sufficient ammount.
-  sockobj = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-  sockobj.setblocking(0)
+  sockobj = openconnection(server_address, port, server_address, port + 1, 10)
 
   start_time = time.time()
-  while total_data_sent < data_length:
+  while total_sent < data_length:
     try:
-      total_data_sent += sockobj.sendto(repeat_data, (server_address, port))
-    except socket.error:
+      total_sent += sockobj.send(repeat_data)
+    except SocketWouldBlockError:
       time.sleep(sleep_time)
-      pass
-
   # Send a signal telling the server we are done sending data.
-  # We send it multiple times in case of packet loss.
-  for i in range(10):
-    try:
-      sockobj.sendto(FIN_TAG, (server_address, port))
-    except socket.error:
-      time.sleep(sleep_time)
-    
 
+  sockobj.send(FIN_TAG)
   sockobj.close()
   
+
+    
+
+
+
+
+
+
 
 
 
