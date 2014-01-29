@@ -24,7 +24,7 @@ Note: client is stored in wrapper list to avoid using mycontext dict
 """
 geoip_clientlist = [None]
 
-def geoip_init_client(url="http://geoip.cs.washington.edu:12679"):
+def geoip_init_client(url="http://geoipserver.poly.edu:12679"):
   """
   <Purpose>
     Create a new GeoIP XML-RPC client object.
@@ -48,7 +48,7 @@ def geoip_init_client(url="http://geoip.cs.washington.edu:12679"):
   geoip_clientlist[0] = xmlrpc_client_Client(url)
 
 
-def geoip_record_by_addr(addr):
+def geoip_record_by_addr(addr, timeout=5):
   """
   <Purpose>
     Request location data of provided IP address from GeoIP XML-RPC server
@@ -56,6 +56,8 @@ def geoip_record_by_addr(addr):
   <Arguments>
     addr:
       IP address of which to look up location
+    timeout
+      How long we should wait for a response.
 
   <Exceptions>
     None.
@@ -67,10 +69,10 @@ def geoip_record_by_addr(addr):
     Dictionary of location data of provided IP address.
   """
 
-  return geoip_clientlist[0].send_request("record_by_addr", (addr,))
+  return geoip_clientlist[0].send_request("record_by_addr", (addr,), timeout)
 
 
-def geoip_record_by_name(name):
+def geoip_record_by_name(name, timeout=5):
   """
   <Purpose>
     Request location data of provided hostname from GeoIP XML-RPC server
@@ -78,6 +80,8 @@ def geoip_record_by_name(name):
   <Arguments>
     name:
       Hostname of which to look up location
+    timeout
+      How long we should wait for a response.
 
   <Exceptions>
     None.
@@ -89,4 +93,4 @@ def geoip_record_by_name(name):
     Dictionary of location data of provided hostname.
   """
 
-  return geoip_clientlist[0].send_request("record_by_name", (name,))
+  return geoip_clientlist[0].send_request("record_by_name", (name,), timeout)

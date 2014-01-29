@@ -1,0 +1,385 @@
+#!python
+"""
+<Program Name>
+  affix_stack.repy
+
+<Author>
+  Monzur Muhammad, monzum@cs.washington.edu
+
+<Date Started>
+  March 2011
+
+<Purpose>
+  This module creates and maintains a stack of affixs which
+  can be used to alter network calls in various ways.
+
+  The user creates a affix stack object by providing a string
+  which contains the list of affixs in order that they should be
+  used with all their arguments.
+
+  The stack holds the affixs in order and each of the affixs in the
+  stack also has a reference to where it is in the stack. This way
+  each of the affix is able to know all the affixs that are below it
+  in the stack. An example affix stack will look like:
+
+              Affix Stack
+          -----------------
+          |  ===========  |
+          |  =  AffixA =  |
+          |  ===========  |
+          |       |       |
+          |       V       |
+          |  ===========  |
+          |  =  AffixB =  |
+          |  ===========  |
+          |       |       |
+          |       V       |
+          |  ===========  |
+          |  =  AffixC =  |
+          |  ===========  |
+          -----------------
+                  |
+                  V
+       -----------------------
+       Original Repy API calls
+       -----------------------
+
+
+  In this case AffixA is able to see both AffixB and AffixC. AffixB is 
+  able to see only AffixC, and AffixC is not able to see any of the affix. 
+
+  When writing a new affix, it must inherit from BaseAffix (baseaffix.repy)
+  and the file name must be all lowercase with no space or symbole in 
+  file name. For example AffixA must have a filename affixa.repy This 
+  particular naming convention is used so that AffixStack can dynamically 
+  import all the affix files that are necessary without the user explicitly
+  importing the affix files.
+
+<History>
+  03-07-2011: Renewed implementation of AffixStack.repy
+  09-20-2012: Changed copy() to make sure it doesn't still have old reference.
+              Changed peek() to make sure it doesn't use copy().
+"""
+
+
+# Import the affix exceptions.
+dy_import_module_symbols("affix_exceptions")
+
+# Import affixmisc.repy that contains various functions
+# that are used for registering/parsing/initializing
+# AFFIX components.
+dy_import_module_symbols("affixmisc.repy")
+
+# Register the base affix class before doing anything.
+# The base affix is used by all other affixs.
+find_and_register_affix('BaseAffix')    
+
+
+
+
+
+# ===========================================================================
+# AffixStack Class - The main AffixStack class that is used.
+# ===========================================================================
+
+
+
+class AffixStack:
+
+
+  def __init__(self, affix_stack_str='', localhost=None):
+    """
+    <Purpose>
+      Initialize the stack of affixs. Parse the affix stack string
+      and create the stack from it.
+  
+    <Arguments>
+      affix_stack_str - A string that contains all the affixs that
+          are going to be used, and the order that they will be
+          used in.
+
+      localhost - Its the ip/hostname that this machine will be 
+          known by. It should be a string.
+
+    <Side Effects>
+      None
+
+    <Exceptions>
+      AffixArgumentError - raised if the arguments provided is not
+          the expected value or type.
+
+      AffixConfigError - raised if unable to parse affix string.
+
+    <Return>
+      None
+    """
+
+    # This is the context that will keep track of the state of this
+    # affix stack. 
+    self.affix_stack_context = {}
+    self.affix_stack_context['localhost'] = 'localhost'
+    self.affix_stack_context['top_affix'] = None
+    self.affix_stack_context['affix_str'] = '' 
+  
+
+    
+    # Ensure that if the localhost was provided then it is in
+    # the string form. Note that we don't check the data type 
+    # for affix_stack_str as it is checked in the function
+    # make_affix_stack()
+    if localhost and not isinstance(localhost, str):
+      raise AffixArgumentError("The 'localhost' provided must be a string.")
+
+    self.affix_stack_context['top_affix'] = self.make_affix_stack(affix_stack_str)
+
+    self.affix_stack_context['localhost'] = localhost
+    self.affix_stack_context['affix_str'] = affix_stack_str
+
+
+
+
+  def peek(self):
+    """
+    <Purpose>
+      Peek into the affix stack and return the top AFFIX
+      component. If the affix stack is empty, then we will 
+      return the RepyNetworkApi object, which is used to
+      call the original repy network calls.
+
+    <Arguments>
+      None
+
+    <Side Effects>
+      None
+
+    <Exceptions>
+      None.
+
+    <Return>
+      Next layer of affix or an object that encompasses the original
+      repy network api.
+    """
+    
+    top_affix = self.affix_stack_context['top_affix']
+    
+    if not top_affix:
+      # This is the case when the affix stack is empty.
+      # So we return a wrapper object which will allow
+      # us to use the original repy network api calls.
+      return RepyNetworkApiWrapper()
+
+    return top_affix
+
+
+
+
+  def pop(self):
+    """
+    <Purpose>
+      Remove and return the nex affix layer from the AFFIX stack.
+      If stack is empty, it raises an error
+
+    <Arguments>
+      None
+
+    <Side Effects>
+      Stack gets modified.
+
+    <Exception>
+      AffixStackError - raised if the affix stack is empty.
+
+    <Return>
+      The next AFFIX object in the stack.
+    """
+
+    # We make a reference to the top AFFIX that lies in the stack
+    # and make the next AFFIX as the root of the stack.
+    # next_affix. Example: 
+    # Originally : A->B->C->Null, A is the root.
+    # Finally: B->C->Null,  A->Null, B is the root.
+    top_affix = self.peek()
+    next_affix = top_affix.peek()
+    self.affix_stack_context['top_affix'] = next_affix
+
+    # We point the next AFFIX for the return object to null so
+    # the popped AFFIX object no longer has any reference to any
+    # of the AFFIXs in the stack.
+    top_affix.affix_context['next_affix'] = None
+
+    return top_affix
+    
+
+
+
+  def push(self, new_affix_object):
+    """
+    <Purpose>
+      Add the new_affix_object underneath the current AFFIX object.
+
+    <Arguments>
+      new_affix_object - the affix that needs to be added to the stack.
+
+    <Side Effects>
+      The stack of the current top affix gets modified
+
+    <Exceptions>
+      AffixStackError - raised if unable to add affix_object to stack.
+    
+    <Return>
+      None
+    """
+    
+    # We point the new_affix_object to our next_affix and then point
+    # ourself to the new_affix_object.
+    next_affix_object = self.peek()
+    new_affix_object.affix_context['next_affix'] = next_affix_object
+    self.affix_stack_context['top_affix'] = new_affix_object
+
+
+
+
+
+  def deepcopy(self):
+    """
+    <Purpose>
+      Does a hard copy of self recursively and returns it.
+
+    <Arguments>
+      None
+
+    <Side Effects>
+      A new AffixStack object is created.
+
+    <Exception>
+      None
+
+    <Return>
+      A AffixStack object. It is deepcopy of self.
+    """
+
+    # In order to do a deepcopy() of the stack, we need to go through
+    # every single AFFIX component in the stack and create a copy of 
+    # it. We cannot use the AFFIX string to build the copy as AFFIX
+    # components might have been copied or deleted since this stack
+    # was initialized.
+
+    # If the current stack is empty, then we have reached the bottom
+    # and can return an empty stack, otherwise we will copy the top
+    # AFFIX component and push it on to the new empty stack.
+    new_stack = AffixStack()
+    top_affix = self.affix_stack_context['top_affix']
+
+    # If the current stack contains an AFFIX, we copy it over, otherwise
+    # we will set it to None.
+    if top_affix:
+      new_stack.affix_stack_context['top_affix'] = top_affix.copy()
+    else:
+      new_stack.affix_stack_context['top_affix'] = None
+
+    new_stack.affix_stack_context['affix_str'] = self.affix_stack_context['affix_str']
+    new_stack.affix_stack_context['localhost'] = self.affix_stack_context['localhost']
+
+    return new_stack
+
+
+
+
+
+  def gethostname(self): 
+    return self.affix_stack_context['localhost']
+
+
+# =========================== End of Public Methods ================================
+
+
+
+  def make_affix_stack(self, affix_str):
+    """
+    <Purpose>
+      Recursively build up a affix stack from a affix string.
+
+    <Arguments>
+      affix_str - a affix string used to build affix stack.
+
+    <Side Effects>
+      None
+
+    <Exceptions>
+      AffixNotFoundError - Raised if one of the affixs in the 
+          affix_str is not a valid affix or the affix file could
+          not be found.
+ 
+      AffixConfigError - raised if affix string is not in the right
+          format.
+
+      AssersionError - may be raised if one of the arguments provided
+          is an unexpected type or value.
+
+    <Return>
+      An AFFIX that was just created or none if affix_str is empty.
+    """
+    
+    # We are going to work our way up from the bottom. So we 
+    # recursively go to the bottom of the stack and then
+    # start constructiong the affixs and then add them to the
+    # stack. That way the first item in the affix_str will be
+    # at the top of the stack. 
+
+    # Base case. If we have reached the bottom of the stack
+    # then we add in an AFFIX that is basically a wrapper 
+    # around the Repy network API. This allows us to make
+    # actual network calls when we have reached the bottom
+    # of the stack.
+    if not affix_str:
+      return None
+      # We were previously pushing down the RepyNetworkApiWrapper
+      # onto a stack in order to resolve issue #11. Until further
+      # discussion, we will not be not adding the wrapper on to
+      # the stack.
+      # self.push(RepyNetworkApiWrapper())
+
+
+    # Some sanity checks.
+    assert(isinstance(affix_str, str)), "Bad arg type. affix_str must be a string."      
+
+    # Build stack recursively. Any exceptions raised will just
+    # percolate up. This may raise a AffixConfigError
+    top_affix_name, affix_args, leftover_affix_str = parse_affix_string(affix_str)
+
+
+    # Ensure the first argument is a legit string. If it is, we are going to load
+    # the affix file if we find it. We assert and register the affix before building
+    # the rest of the stack in order to fail early if we are unable to register
+    # the top affix.
+    assert(isinstance(top_affix_name, str)), "Bad arg type. First arg in affix tuple must be string."
+    find_and_register_affix(top_affix_name)
+
+    # Create a affix stack for the rest of the affixs below us, 
+    # make that our current affix stack. After we create the affix 
+    # stack with the leftover affix_str we are going to copy over
+    # the new AffixStack objects stack_object to our own stack_object.
+    # After we have copied it, we can now push on the top affix on top
+    # of it.
+    next_affix_object = self.make_affix_stack(leftover_affix_str)
+
+    # Create the new affix object.
+    # The new stack will have a copy of the affixstack before this 
+    # layer is added. So if this is the first layer, then the 
+    # Underlying stack beneath it would be None.
+    new_affix = create_affix_object(top_affix_name, affix_args, next_affix_object)
+
+
+    # Link the top affix to the affix stack object. This makes top_affix
+    # the root/head of the affix stack. Even though it is called a affix
+    # stack, the internals of the stack will work like a linked list.
+    #self.push(top_affix)
+
+    # Return the top affix. Do we need to return anything? I am returning for convenience.
+    # If this is the first layer then our peek may be empty.
+    return new_affix
+    
+
+  
+
+
+

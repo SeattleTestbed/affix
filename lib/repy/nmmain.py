@@ -39,6 +39,12 @@ import sys
 import daemon
 import optparse
 
+# runonce relies on tempfile, whose components utilize the abc library.
+# Since we clobber built-ins in repyV2, we have to be sure that any
+# python libraries that require the built-ins intact be initialized
+# before we import repy code.  See #1273 for more information.
+import runonce
+
 import repyhelper #used to bring in NAT Layer
 
 # needed to log OS type / Python version
@@ -58,11 +64,6 @@ repyhelpercachedir = repyhelper.set_importcachedir('nodemanager.repyhelpercache'
 import warnings
 # Ignores all warnings
 warnings.simplefilter("ignore")
-
-from repyportability import *
-_context = locals()
-add_dy_support(_context)
-
 
 
 import time
@@ -84,8 +85,6 @@ import nmrequesthandler
 
 import persist
 
-import runonce
-
 # for getruntime...
 import nonportable
 
@@ -105,12 +104,21 @@ import emulcomm
 # Add AFFIX to Seattle nodemanager. The two keys allows us to 
 # control the AFFIX stack as well as enable or disable AFFIX
 # in Seattle.
+from repyportability import *
+_context = locals()
+add_dy_support(_context)
+
+
 dy_import_module_symbols("advertise.repy")
-dy_import_module_symbols("shimstackinterface")
+dy_import_module_symbols("sockettimeout.repy")
+dy_import_module_symbols("affixstackinterface")
+
+
 affix_service_key = "SeattleAffixStack"
 enable_affix_key = "EnableSeattleAffix"
 affix_enabled = False
 affix_stack_string = None
+check_affix_frequency = 15 * 60 # Check for Affix status update every 15 minutes.
 
 
 # JAC: Fix for #1000: This needs to be after ALL repyhhelper calls to prevent 
@@ -296,26 +304,26 @@ def start_accepter():
           # If AFFIX is enabled, then we use AFFIX to open up a tcpserversocket.
           if affix_enabled:
             # Here we are going to use a for loop to find a second available port
-            # for us to use for the LegacyShim. Since the LegacyShim opens up two
+            # for us to use for the LegacyAffix. Since the LegacyAffix opens up two
             # tcpserversocket, it needs two available ports. The first for a normal
-            # repy listenforconnection call, the second for shim enabled 
+            # repy listenforconnection call, the second for affix enabled 
             # listenforconnection call.
-            for shimportindex in range(portindex+1, len(configuration['ports'])):
-              shimport = configuration['ports'][shimportindex]
-              affix_legacy_string = "(LegacyShim," + str(shimport) + ",0)" + affix_stack_string
-              affix_object = ShimStackInterface(affix_legacy_string)
+            for affixportindex in range(portindex+1, len(configuration['ports'])):
+              affixport = configuration['ports'][affixportindex]
+              affix_legacy_string = "(LegacyAffix," + str(affixport) + ",0)" + affix_stack_string
+              affix_object = AffixStackInterface(affix_legacy_string)
               serversocket = affix_object.listenforconnection(bind_ip, possibleport)
               servicelogger.log("[INFO]Started accepter thread with Affix string: " + affix_legacy_string)
               break
             else:
               # This is the case if we weren't able to find any port to listen on
-              # With the legacy shim.
-              raise ShimError("Unable to create create tcpserversocket with shims using port:" + str(possibleport))
+              # With the legacy affix.
+              raise AffixError("Unable to create create tcpserversocket with affixs using port:" + str(possibleport))
 
           else:
             # If AFFIX is not enabled, then we open up a normal tcpserversocket.
             # For now, we'll use the second method.
-            serversocket = listenforconnection(bind_ip, possibleport)
+            serversocket = timeout_listenforconnection(bind_ip, possibleport,10)
           
           # If there is no error, we were able to successfully start listening.
           # Create the thread, and start it up!
@@ -423,7 +431,7 @@ def main():
   # Check if we are running in testmode.
   if TEST_NM:
     nodemanager_pid = os.getpid()
-    servicelogger.log("[INFO]: Running nodemanager in test mode on port <nodemanager_port>, "+
+    servicelogger.log("[INFO]: Running nodemanager in test mode on port 1224, "+
                       "pid %s." % str(nodemanager_pid))
     nodeman_pid_file = open(os.path.join(os.getcwd(), 'nodemanager.pid'), 'w')
     
@@ -484,15 +492,20 @@ def main():
     if 'crontab_updated_for_2009_installer' not in configuration or \
           configuration['crontab_updated_for_2009_installer'] == False:
       try:
-        import update_crontab_entry
-        modified_crontab_entry = \
-            update_crontab_entry.modify_seattle_crontab_entry()
-        # If updating the seattle crontab entry succeeded, then update the
-        # 'crontab_updated_for_2009_installer' so the nodemanager no longer
-        # tries to update the crontab entry when it starts up.
-        if modified_crontab_entry:
-          configuration['crontab_updated_for_2009_installer'] = True
-          persist.commit_object(configuration,"nodeman.cfg")
+        # crontab may not exist on Android, therefore let's not check
+        # if we are running on Android. See #1302 and #1254.
+        try:
+          import android
+        except ImportError:
+          import update_crontab_entry
+          modified_crontab_entry = \
+              update_crontab_entry.modify_seattle_crontab_entry()
+          # If updating the seattle crontab entry succeeded, then update the
+          # 'crontab_updated_for_2009_installer' so the nodemanager no longer
+          # tries to update the crontab entry when it starts up.
+          if modified_crontab_entry:
+            configuration['crontab_updated_for_2009_installer'] = True
+            persist.commit_object(configuration,"nodeman.cfg")
 
       except Exception,e:
         exception_traceback_string = traceback.format_exc()
@@ -551,6 +564,10 @@ def main():
   # periodically.   This makes it clear I am alive.
   times_through_the_loop = 0
 
+  # Setup the initial time for checking Affix status.
+  last_check_affix_time = nonportable.getruntime()
+
+
   # BUG: Need to exit all when we're being upgraded
   while True:
 
@@ -577,6 +594,7 @@ def main():
       harshexit.harshexit(55)
 
 
+
     # Check for ip change.
     current_ip = None
     while True:
@@ -597,7 +615,8 @@ def main():
 
     # If ip has changed, then restart the advertisement and accepter threads.
     if current_ip != myip:
-      servicelogger.log('[WARN]:At ' + str(time.time()) + ' node ip changed...')
+      servicelogger.log('[WARN]:Node IP has changed, it is ' + 
+        str(current_ip) + ' now (was ' + str(myip) + ').')
       myip = current_ip
 
       # Restart the accepter thread and update nodename in node_reset_config
@@ -608,28 +627,36 @@ def main():
       start_advert_thread(vesseldict, myname, configuration['publickey'])
 
 
-
+    
     # Check to see if we need to restart the accepter thread due to affix
     # string changing or it being turned on/off.
-    try:
-      affix_enabled_lookup = advertise_lookup(enable_affix_key)[-1]
-      if affix_enabled_lookup and str(affix_enabled_lookup) != str(affix_enabled):
-        servicelogger.log('[WARN]:At ' + str(time.time()) + ' affix_enabled set to: ' + affix_enabled_lookup)
-        servicelogger.log('Previous flag for affix_enabled was: ' + str(affix_enabled))
-        node_reset_config['reset_accepter'] = True
-        accepter_thread.close_serversocket()
-        
-      elif affix_enabled_lookup == 'True':
-        affix_stack_string_lookup = advertise_lookup(affix_service_key)[-1]
-        # If the affix string has changed, we reset our accepter listener.
-        if affix_stack_string_lookup != affix_stack_string:
-          servicelogger.log('[WARN]:At ' + str(time.time()) + ' affix string chaged to: ' + affix_stack_string_lookup)
+    if (nonportable.getruntime() - last_check_affix_time) > check_affix_frequency:
+      try:
+        servicelogger.log("[Info] Checking to see if Affix status has changed...")
+        affix_enabled_lookup = advertise_lookup(enable_affix_key)[-1]
+        if affix_enabled_lookup and str(affix_enabled_lookup) != str(affix_enabled):
+          servicelogger.log('[WARN]:At ' + str(time.time()) + ' affix_enabled set to: ' + affix_enabled_lookup)
+          servicelogger.log('Previous flag for affix_enabled was: ' + str(affix_enabled))
           node_reset_config['reset_accepter'] = True
           accepter_thread.close_serversocket()
-    except (AdvertiseError, IndexError, ValueError):
-      # IndexError and ValueError will occur if the advertise lookup
-      # returns an empty list.
-      pass
+        
+        elif affix_enabled_lookup == 'True':
+          affix_stack_string_lookup = advertise_lookup(affix_service_key)[-1]
+          # If the affix string has changed, we reset our accepter listener.
+          if affix_stack_string_lookup != affix_stack_string:
+            servicelogger.log('[WARN]:At ' + str(time.time()) + ' affix string chaged to: ' + affix_stack_string_lookup)
+            node_reset_config['reset_accepter'] = True
+            accepter_thread.close_serversocket()
+      except (AdvertiseError, IndexError, ValueError):
+        # IndexError and ValueError will occur if the advertise lookup
+        # returns an empty list.
+        pass
+      except Exception, err:
+        servicelogger.log('[Exception]:At ' + str(time.time()) + ' Uncaught exception: ' + str(err))
+
+      # Update the last time Affix status was checked.
+      last_check_affix_time = nonportable.getruntime()
+
 
     # If the reset accepter flag has been turned on, we call start_accepter
     # and update our name. 

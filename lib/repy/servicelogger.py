@@ -25,19 +25,56 @@ import persist
 import sys
 import traceback
 
-# We don't import from repyportability because when this is imported from
-# within repy, restrictions files are no longer honored.
-
-from repyportability import *
-_context = locals()
-add_dy_support(_context)
-
-dy_import_module_symbols('servicelookup.repy')
 
 
 
 logfile = None
 servicevessel = None
+
+
+# This is re-implemented here in python so that we do not have a
+# dependency to any repy code, and therefore repyportability.
+# Importing repyportability will cause unsafe repy elements to be
+# allowed, bad if this module is imported from repy.py.
+def _servicelookup_get_servicevessels(vesseldict, ownerkey, ownerinfo):
+  # This is taken from servicelookup.repy.
+
+  def rsa_is_valid_publickey(key):
+    # This is taken from rsa.repy.
+    # must be a dict
+    if type(key) is not dict:
+      return False
+
+    # missing the right keys
+    if 'e' not in key or 'n' not in key:
+      return False
+
+    # has extra data in the key
+    if len(key) != 2:
+      return False
+
+    for item in ['e', 'n']:
+      # must have integer or long types for the key components...
+      if type(key[item]) is not int and type(key[item]) is not long:
+        return False
+
+    if key['e'] < key['n']:
+      # Seems valid...
+      return True
+    else:
+      return False
+
+  def rsa_publickey_to_string(publickey):
+    # This is taken from rsa.repy.
+    if not rsa_is_valid_publickey(publickey):
+      raise ValueError, "Invalid public key"
+    return str(publickey['e'])+" "+str(publickey['n'])
+
+  ret = []
+  for vesselid, vesselinfodict in vesseldict.iteritems():
+    if (ownerkey == rsa_publickey_to_string(vesselinfodict['ownerkey']) and ownerinfo in vesselinfodict['ownerinformation']):
+      ret.append(vesselid)
+  return ret
 
 
 def get_servicevessel(maindirectory = '.', readattempts = 3):
@@ -94,7 +131,7 @@ def get_servicevessel(maindirectory = '.', readattempts = 3):
   if not vesseldictloaded:
     raise Exception("Could not load vesseldict.")
 
-  service_vessels = servicelookup_get_servicevessels(vesseldict, ownerkey, ownerinfo)
+  service_vessels = _servicelookup_get_servicevessels(vesseldict, ownerkey, ownerinfo)
   
   # We're iterating through items that are in an arbitrary order (the order 
   # they were in the vesseldict).   We will return the first one that matches

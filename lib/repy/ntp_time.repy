@@ -70,32 +70,41 @@ def ntp_time_updatetime(localport):
 
   timeservers = ["time-a.nist.gov", "time-b.nist.gov", "time-a.timefreq.bldrdoc.gov", "time-b.timefreq.bldrdoc.gov", "time-c.timefreq.bldrdoc.gov", "utcnist.colorado.edu", "time.nist.gov", "time-nw.nist.gov", "nist1.symmetricom.com", "nist1-dc.WiTime.net", "nist1-ny.WiTime.net", "nist1-sj.WiTime.net", "nist1.aol-ca.symmetricom.com", "nist1.aol-va.symmetricom.com", "nist1.columbiacountyga.gov", "nist.expertsmi.com", "nist.netservicesgroup.com"]
 
-  listenhandle = recvmess(ip,localport, _time_decode_NTP_packet)
-  mycontext['ntp_time_got_time'] = False
+  socketobj = listenformessage(ip,localport)
+
   # always close the handle before returning...
   try: 
-    # try five random servers times...
+    # try five random servers, and send requests to all of the servers and 
+    # then wait for a response from any server for atmost 5 seconds. This way
+    # the total wait time is reduced to 5 seconds, since any one of the server's
+    # is guaranteed to give a response.
     for servername in random_sample(timeservers,5):
 
       # this sends a request, version 3 in "client mode"
       ntp_request_string = chr(27)+chr(0)*47
-      try: 
-        sendmess(servername,123, ntp_request_string, ip, localport) # 123 is the NTP port
+      try:
+        sendmessage(gethostbyname(servername),123, ntp_request_string,\
+          ip, localport) # 123 is the NTP port
       except Exception:
         # most likely a lookup error...
         continue
 
-      # wait for 5 seconds for a response before retrying
-      for junkiterations in range(10):
-        sleep(.5)
+    # Wait for 5 seconds to get a response from any of the 5 servers that was
+    # requested above.
+    starttime = getruntime()
+    responsetime = 5.0
 
-        if mycontext['ntp_time_got_time']:
-          # If we've had a response, we're done!
-          return
-    
+    while (getruntime() - starttime) < responsetime:
+      try:
+        (remoteip, remoteport, mess) = socketobj.getmessage()
+      except SocketWouldBlockError:
+        sleep(0.05) # Retry amount time...
+      else:
+        time_settime(_time_convert_timestamp_to_float(mess[40:48]))
+        return
     
   finally:
-    stopcomm(listenhandle)
+    socketobj.close()
 
   # Failure, tried servers without luck...
   raise TimeError, "Time Server update failed.  Perhaps retry later..."
@@ -110,12 +119,6 @@ def _time_convert_timestamp_to_float(timestamp):
   integerpart = (ord(timestamp[0])<<24) + (ord(timestamp[1])<<16) + (ord(timestamp[2])<<8) + (ord(timestamp[3]))
   floatpart = (ord(timestamp[4])<<24) + (ord(timestamp[5])<<16) + (ord(timestamp[6])<<8) + (ord(timestamp[7]))
   return integerpart + floatpart / float(2**32)
-
-
-def _time_decode_NTP_packet(ip, port, mess, ch):
-  time_settime(_time_convert_timestamp_to_float(mess[40:48]))
-  mycontext['ntp_time_got_time'] = True
-  stopcomm(ch)
 
 
 #register the update method

@@ -128,11 +128,11 @@ def httpretrieve_open(url, querydata=None, postdata=None,\
     if proxy is not None:
       # if there is a proxy, open a connection with the proxy instead of the actual server
       # use the timeout we are given (or none)
-      sockobj = timeout_openconn(proxy[0], proxy[1], timeout=timeout)  
+      sockobj = timeout_openconnection(proxy[0], proxy[1], timeout=timeout)  
     else:
       # if there is no proxy open a connection with server directly
       # use the timeout we are given (or none)
-      sockobj = timeout_openconn(hoststr, portint, timeout=timeout)
+      sockobj = timeout_openconnection(gethostbyname(hoststr), portint, timeout=timeout)
 
   except Exception, e:
     # If a socket object was created, we want to clean in up.
@@ -309,14 +309,16 @@ def httpretrieve_get_string(url, querydata=None, postdata=None, \
   <Returns>
     Returns the body of the HTTP response (no headers).
   """
-
+  starttime = getruntime()
   # Open a read-only file-like object for the HTTP request.
   httpobj = httpretrieve_open(url, querydata=querydata, postdata=postdata, \
       httpheaders=httpheaders, proxy=proxy, timeout=timeout)
 
+  # Account for time spent contacting the remote server
+  timeout -= getruntime() - starttime
   # Read all of the response and return it.
   try:
-    return httpobj.read()
+    return httpobj.read(timeout=timeout)
   finally:
     httpobj.close()
 
@@ -404,7 +406,7 @@ class _httpretrieve_filelikeobject:
       try:
         contentchunkstr = self._sockobj.recv(lefttoread or 4096)
       except Exception, e:
-        if str(e) == "Socket closed":
+        if str(e) == "The socket has been closed remotely!":
           self._totalcontentisreceived = True
           break
         else:

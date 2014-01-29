@@ -9,14 +9,13 @@ Advertisements to a central server (similar to openDHT)
 This uses UDP and is conceptually quite similar to the centralized advertise
 service
 """
-
 include serialize.repy
 include uniqueid.repy
 
 
 # Hmm, perhaps I should make an initialization call instead of hardcoding this?
 # I suppose it doesn't matter since one can always override these values
-udpservername = "blackbox.cs.washington.edu"
+udpservername = "udpadvertiseserver.poly.edu"
 udpserverport = 10102
 
 # how long to wait for timeouts...
@@ -26,11 +25,6 @@ udpcentralizedservertimeouts = [1,2,4,8]
 # the communicate function can reject it if the server responds belatedly.
 failed_querylist = []
 
-# Need this for receiving over UDP. The Repy v1 API forces us to use 
-# a callback, which requires this roundabout solution.
-mycontext['advertise_response'] = []
-
-mycontext['udprequestport'] = 0
 
 class UDPCentralAdvertiseError(Exception):
   """Error when advertising a value to the central advertise service."""
@@ -41,78 +35,51 @@ class UDPNoResponseError(Exception):
 
 
 
-def _getusableport():
-  """
-  <Purpose>
-    Discover which port the server can use for announcements.
-
-  <Arguments>
-    None
-
-  <Exceptions>
-    None
-
-  <Side Effects>
-    None
-
-  <Returns>
-    An integer port
-  """
-  port_found = False
-  port_min = 63000
-  port_max = 63150
-  port_iter = port_min
-  local_addr = getmyip()
-
-  while not port_found:
-    if port_iter > port_max:
-      raise Exception("Network restriction error! Unable to find a free port!")
-    try:
-      udp_test_socket = recvmess(local_addr, port_iter, _dummy_function)
-      stopcomm(udp_test_socket)
-      port_found = True
-    except Exception, e:
-      port_iter += 1
-
-  return port_iter
-
-
 
 
 # This helper function handles communications with the server
 def _udpcentralizedadvertise_communicate(datastringtosend, timeout, queryid):
-  if mycontext['udprequestport'] == 0:
-    mycontext['udprequestport'] = _getusableport()
-
-  udprequestport = mycontext['udprequestport']
-
-  if udprequestport is None:
-    udprequestport = _getusableport()
-    mycontext['udprequestport'] = udprequestport
-
-  starttime = getruntime()
 
   # Let's get ready to receive a response...
-  # NOTE: This is a roundabout solution to deal with the fact that the 
-  #       V1 API requires use of callbacks when using UDP.
-  udpresponsesocket = recvmess(getmyip(), udprequestport, _listenformessage)
+  localip = getmyip()
+  portrange = range(63100, 63200 + 1)
+
+  for udprequestport in portrange:
+    try:
+      udpresponsesocket = listenformessage(localip, udprequestport)
+      # We've found a port, continue outside of the loop
+      break
+    except (DuplicateTupleError, CleanupInProgressError,
+      AlreadyListeningError, AddressBindingError), e:
+      # These are "legitimate" in the sense that there is something 
+      # in our very program already using the port we just tried.
+      continue
+    except Exception:
+      # Something else went wrong, maybe we aren't connected to the Internet.
+      raise
+  else:
+    # Checked the whole port range without success
+    raise AddressBindingError, "Could not find any usable UDP listen port in the range " + str(portrange) + " on IP address " + str(localip) + "."
+
+  starttime = getruntime()
 
   # but always close the response socket...
   try:
     # send the request over UDP...
-    sendmess(udpservername, udpserverport, datastringtosend, getmyip(), udprequestport)
+    udpserverip = gethostbyname(udpservername)
+    sendmessage(udpserverip, udpserverport,
+      datastringtosend, localip, udprequestport)
 
+    # Don't go into infinite waiting time, if there is no response from
+    # server, wait till timeout and raise an error...
     while getruntime() < starttime + timeout:
-
-      for entry in mycontext['advertise_response']:
-        if entry[len(entry) - 1] == queryid:
-          return_value = mycontext['advertise_response'].pop(mycontext['advertise_response'].index(entry))
-          return return_value
-
-      # Since there's nothing here for us, why not do some spring cleaning?
-      for entry in mycontext['advertise_response']:
-        if queryid - entry[len(entry) - 1] > 100:
-          mycontext['advertise_response'].pop(mycontext['advertise_response'].index(entry))
+      try:
+        # XXX Check if that's the server we contacted! See #1268.
+        (remoteip, remoteport, mess) = udpresponsesocket.getmessage()
+        if (remoteip, remoteport) == (udpserverip, udpserverport):
+          return serialize_deserializedata(mess)
+      except SocketWouldBlockError:
+        pass
 
       # Already done? Let's play nice with the other threads.
       sleep(0.01) # Strongly recommend NOT to set this any higher.
@@ -121,26 +88,7 @@ def _udpcentralizedadvertise_communicate(datastringtosend, timeout, queryid):
 
   finally:
     # always close the response socket...
-    stopcomm(udpresponsesocket)
-
-
-
-
-# This is our roundabout solution for a UDP callback.
-# Could crash. Probably should if something bad happens.
-def _listenformessage(remoteIP, remoteport, message, commhandle):
-  mycontext['advertise_response'].append(serialize_deserializedata(message))
-
-  stopcomm(commhandle)
-  return
-
-
-
-
-# A dummy function for getusableport.
-def _dummy_function(remoteIP, remoteport, message, commhandle):
-  return
-
+    udpresponsesocket.close()
 
 
 
@@ -197,7 +145,8 @@ def udpcentralizedadvertise_announce(key, value, ttlval):
 
     try:
     # send the request over UDP...
-      rawresponse = _udpcentralizedadvertise_communicate(datastringtosend, thistimeout, unique_request_id)
+      rawresponse = _udpcentralizedadvertise_communicate(datastringtosend, 
+        thistimeout, unique_request_id)
 
     except UDPNoResponseError:
       # let's increase the timeout...
@@ -216,7 +165,9 @@ def udpcentralizedadvertise_announce(key, value, ttlval):
         raise UDPCentralAdvertiseError("UDP Centralized announce received response with invalid first parameter '"+str(response)+"'")
   
       if response[1] != unique_request_id:
-        raise UDPCentralAdvertiseError("UDP Centralized announce received different request id '"+str(response)+"'")
+      # This can happen if multiple announces are performed in quick 
+      # succession, see #1294. Workaround: sleep() a bit between requests.
+        raise UDPCentralAdvertiseError("udpcentralized_announce sent request id " + str(unique_request_id) + ", received different request id. Full response: '" + str(response) + "'")
 
       if response[0] != 'OK':
         raise UDPCentralAdvertiseError("UDP Centralized announce failed with '"+response[0]+"'")
@@ -238,7 +189,7 @@ def udpcentralizedadvertise_lookup(key, maxvals=100):
      Returns a list of valid values stored under a key
 
    <Arguments>
-     key: the key to put the value under. This will be converted to a string.
+     key: the key to look up. This will be converted to a string.
 
      maxvals: the maximum number of values to return.   Must be an integer
 
@@ -306,7 +257,9 @@ def udpcentralizedadvertise_lookup(key, maxvals=100):
       raise UDPCentralAdvertiseError("Response tuple did not have exactly three elements '"+str(responsetuple)+"'")
 
     if responsetuple[2] != unique_request_id:
-      raise UDPCentralAdvertiseError("UDP Centralized announce received different request id '"+str(responsetuple)+"'")
+      # This can happen if multiple lookups are performed in quick 
+      # succession, see #1294. Workaround: sleep() a bit between requests.
+      raise UDPCentralAdvertiseError("udpcentralized_lookup sent request id " + str(unique_request_id) + ", received different request id. Full response: '" + str(response) + "'")
 
     if responsetuple[0] != 'OK':
       raise UDPCentralAdvertiseError("Central server returns error '"+str(responsetuple[:-1])+"'")

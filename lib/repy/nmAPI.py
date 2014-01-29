@@ -18,6 +18,9 @@ from repyportability import *
 _context = locals()
 add_dy_support(_context)
 
+# For sys.executable, see #1081
+import sys
+
 # used to persist data...
 import persist
 
@@ -31,7 +34,7 @@ class BadRequest(Exception):
 
 # used to check file names in addfiletovessel, retrievefilefromvessel, and
 # deletefileinvessel
-from emulfile import _assert_is_allowed_filename
+from emulfile import check_repy_filename
 
 # needed for path.exists and remove
 import os 
@@ -58,8 +61,8 @@ import servicelogger
 # This dictionary keeps track of all the programming
 # platform that Seattle supports and where they are
 # located.
-prog_platform_dir = {'repyV1' : 'repyV1',
-                     'repyV2' : 'repyV2'
+prog_platform_dir = {'repyv1' : 'repyV1',
+                     'repyv2' : 'repyV2'
                      }
 
 
@@ -308,6 +311,11 @@ def startvessel(vesselname, argstring):
 
 
 def startvessel_ex(vesselname, prog_platform, argstring):
+  
+  # Convert the programming platform to lowercase to make
+  # it case insensitive.
+  prog_platform = prog_platform.lower()
+
   if vesselname not in vesseldict:
     raise BadRequest, "No such vessel"
 
@@ -363,28 +371,21 @@ def startvessel_ex(vesselname, prog_platform, argstring):
   # Find the location where the sandbox files is located. Location of repyV1, repyV2 etc.
   prog_platform_location = os.path.join(prog_platform_dir[prog_platform], "repy.py")
  
-  # Armon: Check if we are using windows API, and if it is windows mobile
-  if windowsAPI and windowsAPI.MobileCE:
-    # First element should be the script (repy)
-    command[0] = "\"" + repy_constants.PATH_SEATTLE_INSTALL + prog_platform_location  + "\""
-    # Second element should be the parameters
-    command[1] = ip_iface_preference_str + "--logfile \"" + vesseldict[vesselname]['logfilename'] + "\" --stop \""+ vesseldict[vesselname]['stopfilename'] + "\" --status \"" + vesseldict[vesselname]['statusfilename'] + "\" --cwd \"" + updir + "\" --servicelog \"" + vesseldict[vesselname]['resourcefilename']+"\" "+argstring
-    raise Exception, "This will need to be changed to use absolute paths"
-    
-  else:  
-    # I use absolute paths so that repy can still find the files after it 
-    # changes directories...
-    
-    # Conrad: switched this to sequence-style Popen invocation so that spaces
-    # in files work. Switched it back to absolute paths.
-    command = ["python", prog_platform_location] + ip_iface_preference_flags + [
-        "--logfile", os.path.abspath(vesseldict[vesselname]['logfilename']),
-        "--stop",    os.path.abspath(vesseldict[vesselname]['stopfilename']),
-        "--status",  os.path.abspath(vesseldict[vesselname]['statusfilename']),
-        "--cwd",     os.path.abspath(vesselname),
-        "--servicelog", os.path.abspath(vesseldict[vesselname]['resourcefilename'])] + argstring.split()
+  # I use absolute paths so that repy can still find the files after it 
+  # changes directories...
+  
+  # Conrad: switched this to sequence-style Popen invocation so that spaces
+  # in files work. Switched it back to absolute paths.
+  command = [sys.executable, prog_platform_location] + ip_iface_preference_flags + [
+      "--logfile", os.path.abspath(vesseldict[vesselname]['logfilename']),
+      "--stop",    os.path.abspath(vesseldict[vesselname]['stopfilename']),
+      "--status",  os.path.abspath(vesseldict[vesselname]['statusfilename']),
+      "--cwd",     os.path.abspath(vesselname),
+      "--servicelog", 
+      "--execinfo",
+      os.path.abspath(vesseldict[vesselname]['resourcefilename'])] + argstring.split()
 
-    start_task(command)
+  portable_popen.Popen(command)
 
 
   starttime = nonportable.getruntime()
@@ -414,17 +415,7 @@ def startvessel_ex(vesselname, prog_platform, argstring):
 
 
 
-# A helper for startvessel.   private to this module
-# Armon: if MobileCE treat command as an array with 2 elements,
-# one with the script (full path), and the second with the parameters
-def start_task(command):
-  # Check if we are using windows API, and if it is windows mobile
-  if windowsAPI != None and windowsAPI.MobileCE:
-    windowsAPI.launchPythonScript(command[0], command[1])
 
-  # If not, use the portable_popen.Popen interface.
-  else:
-    portable_popen.Popen(command)
     
 
 # Armon: Takes an optional exitparams tuple, which should contain
@@ -476,17 +467,22 @@ def addfiletovessel(vesselname,filename, filedata):
   if vesselname not in vesseldict:
     raise BadRequest, "No such vessel"
 
+  # The user is restricted from using filename starting with 'private_' since
+  # this part of the namespace is reserved for custom security layers.
+  if filename.startswith("private_"):
+    raise BadRequest("User is not allowed to use file names starting with 'private_'")
+
   # get the current amount of data used by the vessel...
   currentsize = nonportable.compute_disk_use(vesselname+"/")
   # ...and the allowed amount
-  resourcedict = resourcemanipulation.read_resourcedict_from_file(vesseldict[vesselname]['resourcefilename'])
+  resourcedict, call_list = resourcemanipulation.read_resourcedict_from_file(vesseldict[vesselname]['resourcefilename'])
 
   # If the current size + the size of the new data is too large, then deny
   if currentsize + len(filedata) > resourcedict['diskused']:
     raise BadRequest("Not enough free disk space")
   
   try:
-    _assert_is_allowed_filename(filename)
+    check_repy_filename(filename)
   except TypeError, e:
     raise BadRequest(str(e))
     
@@ -508,9 +504,16 @@ def listfilesinvessel(vesselname):
 
   # the directory should exist.   If not, it's an Internal error...
   filelist = os.listdir(vesselname+"/")
+  filelist.sort()
+
+  # remove any files in the protect part of the namespace
+  filteredfilelist = []
+  for filename in filelist:
+    if not filename.startswith("private_"):
+      filteredfilelist.append(filename)
 
   # return the list of files, separated by spaces
-  return ' '.join(filelist) + "\nSuccess"
+  return ' '.join(filteredfilelist) + "\nSuccess"
   
 
 
@@ -519,8 +522,11 @@ def retrievefilefromvessel(vesselname,filename):
   if vesselname not in vesseldict:
     raise BadRequest, "No such vessel"
 
+  if filename.startswith("private_"):
+    raise BadRequest("User is not allowed to use file names starting with 'private_'")
+
   try:
-    _assert_is_allowed_filename(filename)
+    check_repy_filename(filename)
   except TypeError, e:
     raise BadRequest(str(e))
 
@@ -546,8 +552,11 @@ def deletefileinvessel(vesselname,filename):
   if vesselname not in vesseldict:
     raise BadRequest, "No such vessel"
   
+  if filename.startswith("private_"):
+    raise BadRequest("User is not allowed to use file names starting with 'private_'")
+
   try:
-    _assert_is_allowed_filename(filename)
+    check_repy_filename(filename)
   except TypeError, e:
     raise BadRequest(str(e))
 
@@ -573,7 +582,7 @@ def readvessellog(vesselname):
   # doing the actual work) to minimize the time between copy calls.
   firstOK=False
   try:
-    shutil.copy(vesseldict[vesselname]['logfilename']+'.old', "tmplog")
+    shutil.copyfile(vesseldict[vesselname]['logfilename']+'.old', "tmplog")
   except IOError, e:
     if e[0] == 2:
       # No such file or directory, we should ignore (we likely interrupted an 
@@ -589,7 +598,7 @@ def readvessellog(vesselname):
   # I have this next so that the amount of time between copying the files is 
   # minimized (I'll read both after)
   try:
-    shutil.copy(vesseldict[vesselname]['logfilename']+'.new', "tmplog.new")
+    shutil.copyfile(vesseldict[vesselname]['logfilename']+'.new', "tmplog.new")
   except IOError, e:
     if e[0] == 2:
       # No such file or directory, we should ignore (we likely interrupted an 
@@ -644,9 +653,13 @@ def resetvessel(vesselname,exitparams=(44, '')):
       break
 
   # Okay, it is stopped now.   Now I'll clean up the file system...
-  shutil.rmtree(vesselname)
-  os.mkdir(vesselname)
-  
+  filelist = os.listdir(vesselname+"/")
+
+  # don't delete any files in the protect part of the namespace
+  for filename in filelist:
+    if not filename.startswith("private_"):
+      os.remove(vesselname+"/"+filename)
+
   # and remove the log files and stop file...
   if os.path.exists(vesseldict[vesselname]['logfilename']):
     os.remove(vesseldict[vesselname]['logfilename'])
@@ -774,12 +787,12 @@ def get_new_vessel_name():
 
 
 # Private.   Creates a new vessel's state in the dictionary and on disk
-def _setup_vessel(vesselname, examplevessel, resourcedict):
+def _setup_vessel(vesselname, examplevessel, resourcedict, call_list):
   if vesselname in vesseldict:
     raise Exception, "Internal Error, setting up vessel '"+vesselname+"' already in vesseldict"
 
   # write the new resource file
-  resourcemanipulation.write_resourcedict_to_file(resourcedict, 'resource.'+vesselname)
+  resourcemanipulation.write_resourcedict_to_file(resourcedict, 'resource.'+vesselname, call_list)
 
   # Set the invariants up...
   item = {}
@@ -855,14 +868,14 @@ def splitvessel(vesselname, resourcedata):
   newname2 = get_new_vessel_name()
 
   try:
-    proposedresourcedict = resourcemanipulation.parse_resourcedict_from_string(resourcedata)
+    proposedresourcedict, call_list = resourcemanipulation.parse_resourcedict_from_string(resourcedata)
   except resourcemanipulation.ResourceParseError, e:
     raise BadRequest(str(e))
   
   # we must have enough so that starting - offcut - proposed > 0
-  startingresourcedict = resourcemanipulation.read_resourcedict_from_file(vesseldict[vesselname]['resourcefilename'])
+  startingresourcedict, call_list_vessel = resourcemanipulation.read_resourcedict_from_file(vesseldict[vesselname]['resourcefilename'])
 
-  offcutresourcedict = resourcemanipulation.read_resourcedict_from_file(offcutfilename)
+  offcutresourcedict, offcut_call_list = resourcemanipulation.read_resourcedict_from_file(offcutfilename)
 
   # let's see what happens if we just remove the offcut...
   try:
@@ -877,11 +890,10 @@ def splitvessel(vesselname, resourcedata):
   except resourcemanipulation.ResourceMathError, e:
     raise BadRequest('Proposed vessel is too large.\n'+str(e))
 
-
   # newname1 becomes the leftovers...
-  _setup_vessel(newname1, vesselname, finalresourcedict)
+  _setup_vessel(newname1, vesselname, finalresourcedict, call_list_vessel)
   # newname2 is what the user requested
-  _setup_vessel(newname2, vesselname, proposedresourcedict)
+  _setup_vessel(newname2, vesselname, proposedresourcedict, call_list_vessel)
   _destroy_vessel(vesselname)
     
   persist.commit_object(vesseldict, "vesseldict")
@@ -907,9 +919,9 @@ def joinvessels(vesselname1, vesselname2):
   newname = get_new_vessel_name()
 
 
-  currentresourcedict1 = resourcemanipulation.read_resourcedict_from_file(vesseldict[vesselname1]['resourcefilename'])
-  currentresourcedict2 = resourcemanipulation.read_resourcedict_from_file(vesseldict[vesselname2]['resourcefilename'])
-  offcutresourcedict = resourcemanipulation.read_resourcedict_from_file(offcutfilename)
+  currentresourcedict1, call_list_v1 = resourcemanipulation.read_resourcedict_from_file(vesseldict[vesselname1]['resourcefilename'])
+  currentresourcedict2, call_list_v2 = resourcemanipulation.read_resourcedict_from_file(vesseldict[vesselname2]['resourcefilename'])
+  offcutresourcedict, offcut_call_list = resourcemanipulation.read_resourcedict_from_file(offcutfilename)
 
 
   # the final resources are reconstructed from the offcut + vessel1 + vessel2
@@ -917,7 +929,10 @@ def joinvessels(vesselname1, vesselname2):
 
   finalresourcedict = resourcemanipulation.add_resourcedicts(intermediateresourcedict, offcutresourcedict)
 
-  _setup_vessel(newname, vesselname1, finalresourcedict)
+  # MMM: We add in the call list of resources from one of the original 
+  # resource file. Since this is for backward compatibility for Repy V1,
+  # it does not matter which call list we add in to the final resource file.
+  _setup_vessel(newname, vesselname1, finalresourcedict, call_list_v1)
   _destroy_vessel(vesselname1)
   _destroy_vessel(vesselname2)
     

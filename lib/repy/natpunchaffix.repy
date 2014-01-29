@@ -1,0 +1,508 @@
+#!python
+"""
+<Purpose>
+  The purpose of the NAT Punch Affix is to allow a machine that is behind
+  a NAT to be accessed. The way it works is that the machine that is
+  behind a NAT (or some sort of firewall) will make a connection to a
+  Nat Forwarder machine and wait for incoming traffic. A Nat Forwarder
+  machine is a special machine that is not behind NAT and can be accessed
+  by both the server and the client.
+
+<Author>
+  Monzur Muhammad
+  monzum@cs.washington.edu
+
+<Started>
+  1st June 2011
+"""
+
+
+dy_import_module_symbols("random")
+dy_import_module_symbols("session")
+dy_import_module_symbols("advertise_objects")
+dy_import_module_symbols("nat_forwarder_common_lib")
+
+
+# The default timeout that is used when connecting to forwarder
+# when doing listenforconnection.
+_NAT_AFFIX_DEFAULT_TIMEOUT = 30
+
+# The affix string to use to connect to Nat Forwarder.
+_NAT_AFFIX_STRING = "(CoordinationAffix)"
+
+# Whether we want to print debug statements.
+_NAT_AFFIX_DEBUG_MODE = False
+
+
+class NatSockObj:
+  def __init__(self, sockobj, server_id):
+    """
+    <Purpose>
+      The purpose of this NatSockObj is just to store
+      the server_id as it will be required later when 
+      it needs to be used by tcpserver_getconnection()
+    """
+    self._sockobj = sockobj
+    self._server_id = server_id
+    self._closed = False
+  
+  def close(self):
+    if self._closed:
+      return False
+    else:
+      self._closed = True
+      self._sockobj.close()
+      return True
+
+  def recv(self, bytes):
+    return self._sockobj.recv(bytes)
+
+  def send(self, message):
+    return self._sockobj.send(message)
+
+  def getserver_id(self):
+    return self._server_id
+
+
+class NatPunchAffix(BaseAffix):
+
+
+  # The advertise object that is used to lookup forwarders. This
+  # object will be shared between all instances of this affix.
+  forwarder_cache = LookupCache()
+
+
+  def __init__(self, affix_stack = AffixStack(), optional_args = None):
+    """
+    <Purpose>
+      Initialize the NatPunchAffix.
+
+    <Arguments>
+      affix_stack - the affix stack underneath us.
+
+      optional_args - the optional args if provided will be the 
+        forwarder ip address and port that the user wants to use.
+
+    <Side Effects>
+      None
+
+    <Exceptions>
+      AffixInternalError raised if the optional args provided is not of
+      the proper format.
+
+    <Return>
+      None
+    """
+
+    # If optional arguments are provided, then store it as the default forwarder.
+    if optional_args:
+      assert(isinstance(optional_args, list)), "Bad optional args. Optional arg must be a list."
+      assert(len(optional_args) == 1), "Bad optional args. Optional args must contain 1 value. (IP:port)"
+
+      try:
+        forwarder_ip, forwarder_port = optional_args[0].split(':')
+        self.default_forwarder = [forwarder_ip, int(forwarder_port)]
+      except ValueError:
+        raise AffixInternalError("Optional arg provided is not of valid format. Must be IP:port.")
+      
+    # If no default forwarder is provided.
+    else:
+      self.default_forwarder = []
+
+    BaseAffix.__init__(self, affix_stack, optional_args)
+
+
+
+
+  def openconnection(self, destip, destport, localip, localport, timeout):
+    """
+    <Purpose>
+      Opens a connection to the server through the NAT forwarder. The client
+      opens a connection to the forwarder and sends and receives all message
+      from it. The forwarder in turn will forward all the traffic to and forth
+      from the server.
+
+    <Arguments>
+      The same arguments that the RepyV2 openconnection accepts.
+
+    <Side Effects>
+      Opens a connection to the forwarder rather then to the server directly.
+
+    <Exceptions>
+      Exceptions that are raised by the Repy V2 api call openconnection()
+
+    <Return>
+      A socket like object.
+    """
+
+    # If there are no forwarders provided, then we raise a ConnectionRefusedError.
+    if not self.default_forwarder:
+      raise ConnectionRefusedError("NAT forwarder is not specified. Cannot establish connection.")
+
+
+    # Make a connection to the forwarder. Exceptions may be raised, if they are then we raise them.
+    forwarder_ip, forwarder_port = self.default_forwarder
+    if _NAT_AFFIX_DEBUG_MODE:
+      log("Connecting with %s, %d, %s, %d" % (forwarder_ip, forwarder_port, localip, localport) + "\n")
+
+    affix_stack_object = AffixStackInterface(_NAT_AFFIX_STRING)
+    sockobj = affix_stack_object.openconnection(forwarder_ip, forwarder_port, localip, localport, timeout)
+    if _NAT_AFFIX_DEBUG_MODE:
+      log("Connected properly.\n")
+
+    # Let the forwarder know which server we want to connect to.
+    server_id = "%s:%d" % (destip, destport)
+    session_sendmessage(sockobj, "%s,%s" % (CONNECT_CLIENT_TAG, server_id)) 
+    if _NAT_AFFIX_DEBUG_MODE:
+      log("Sent connection tag.\n")
+    confirmation_msg = session_recvmessage(sockobj)
+    if _NAT_AFFIX_DEBUG_MODE:
+      log("received confirmation tag\n")
+    # NOTE: We need to incorporate the timeout value in here somehow. 
+    
+    # If the forwarder confirms that we have successfully connected, then we 
+    # return the socket like object with the server_id.
+    if confirmation_msg.startswith(CONNECT_SUCCESS):
+      return sockobj
+    else:
+      raise ConnectionRefusedError("Could not connect to a NAT forwarder.") 
+
+
+
+
+
+  def listenforconnection(self, localip, localport):
+    """
+    <Purpose>
+      Instead of doing a listenforconnection we do an openconnection
+      to the next layer of the affix. We open a connection to one of 
+      the forwarders. Returns a tcpserversocket. Note that each time
+      an application calls listenforconnection, a new AffixStack instance
+      is created with a new instance of the NatPunchAffix, therefore we
+      can store the localip, localport globally in the instance of
+      this affix.
+
+
+    <Arguments>
+      localip - the local ip address.
+      
+      localport - the port that should be used to listen on.
+
+    <Side Effects>
+      None
+
+    <Return>
+      NATServerSocket object.
+    """
+
+    server_id = "%s:%d" % (localip, localport)
+
+    # Try to connect to a forwarder so we can receive connections 
+    # in the future.
+    try:
+      connection_socket = self.connect_to_forwarder(localip, localport)
+    except (RepyArgumentError, AddressBindingError), err:
+      # If we get these two arguments we want to raise them as AddressBindingError.
+      raise AddressBindingError(err)
+
+    # Raise AddressBindingError if we are unable to connect to any forwarder.
+    if not connection_socket:
+      raise AddressBindingError("Unable to connect to any NAT Forwarder.")
+    
+    connection_control_sockobj = NatSockObj(connection_socket, server_id)
+    return AffixTCPServerSocket(connection_control_sockobj, self)  
+    
+
+
+
+
+
+  def tcpserversocket_getconnection(self, nat_serversocket):
+    """
+    <Purpose>
+      When we attempt to do a getconnection from a machine that is behind
+      NAT, we connect to the forwarder instead, and keep listening from
+      the forwarder, checking if a new connection needs to be made. A 
+      connection to the forwarder has already been made, so we just need
+      to ask the forwarder if a connection need to be established.
+
+    <Arguments>
+      nat_serversocket - This is a socket like object. It is an object that
+        contains the actual socket that is connected to a NAT forwarder as
+        well as keeps track of what the server_id is.T
+
+    <Side Effects>
+      None
+
+    <Exceptions>
+      Repy V2 exceptions for tcpserversocket.getconnection()
+
+    <Return>
+      (remoteip, remoteport, socketobj) - for the connection.
+    """
+
+    if nat_serversocket._closed:
+      raise SocketClosedLocal("The NAT TCPServerSocket has been closed.")
+
+    server_id = nat_serversocket.getserver_id()
+      
+    # Ask the server if there is any connection that can be made and get back
+    # the response.
+    try:
+      session_sendmessage(nat_serversocket, CHECK_SERVER_CONN)
+      nat_response = session_recvmessage(nat_serversocket)
+
+    except (SocketClosedLocal, SocketClosedRemote):
+      # We should try reconnecting since we shouldn't raise SocketClosedLocal
+      # unless the client actually called close.
+      try:
+        localip, localport_str = server_id.split(":", 1)
+        localport = int(localport_str)
+        new_connection_socket = self.connect_to_forwarder(localip, localport)
+
+      except Exception, e:
+        if _NAT_AFFIX_DEBUG_MODE:
+          log("Error restablishing server socket connection: " + repr(e) + "\n")
+        raise SocketWouldBlockError("Unable to restablish connection to forwarder.")
+
+      else:
+        # If we couldn't make a new connection, then we should block until
+        # we can connect to some forwarder.
+        if not new_connection_socket:
+          raise SocketWouldBlockError("Unable to restablish connection to forwarder.")
+
+        nat_serversocket._sockobj = new_connection_socket
+        raise SocketWouldBlockError("Unable to connect to any client currently.")
+
+    # If there is an available client, we try to establish a connection.
+    if nat_response == CLIENT_AVAILABLE:
+      return self.connect_available_client(server_id)
+    else:
+      raise SocketWouldBlockError("Unable to connect to any client currently.")
+      
+      
+      
+    
+  def tcpserver_close(self, serversocket):
+    # Note that we simply just close the control socket that is connected
+    # to the Nat Forwarder. When the connection is closed, the NAT forwarder
+    # automatically removes this server from the registered_server list that
+    # the forwarder has.
+    serversocket.close()
+
+    
+    
+  def connect_available_client(self, server_id):
+    """
+    <Purpose>
+      There is an available client that is waiting to be connected
+      to the server. Therefore we open up a connection to the NAT
+      Forwarder that we are registered with and ask the NAT forwarder
+      to connect us with the waiting client.
+      
+    <Arguments>
+      server_id - the unique id of this connection (IP:Port)
+      
+    <Side Effects>
+      None
+      
+    <Exception>
+      SocketWouldBlockError will be raised if we are unable to connect 
+      successfully to a client.
+      
+    <Return>
+      A tuple contaiing the socket object of the connection, the client ip
+      and the client port.
+    """
+    
+    # Extract the forwarder ip and port.
+    # Also retrieve a random localport that can be used to create a 
+    # connection to the forwarder.
+    (forwarder_ip, forwarder_port) = self.default_forwarder
+    random_localport = self.retrieve_random_tcp_port()
+    
+    # Connect to the forwarder.
+    affix_stack_object = AffixStackInterface(_NAT_AFFIX_STRING)
+    new_sockobj = affix_stack_object.openconnection(forwarder_ip, forwarder_port, getmyip(), random_localport, _NAT_AFFIX_DEFAULT_TIMEOUT)
+        
+    # Request the Nat Forwarder to connect a client to this new socket that
+    # we just opened up. Then we check if we were successfully connected to
+    # a client
+    session_sendmessage(new_sockobj, CONNECT_SERVER_TAG + ',' + server_id)
+    response = session_recvmessage(new_sockobj)
+        
+    # We successfully made a connection! So we return the socket along with
+    # the ip address and port of the client.
+    if response.startswith(CONNECT_SUCCESS):
+      client_id = response.split(',')[1]
+      client_ip, client_port_str = client_id.split(':')
+      client_port = int(client_port_str)
+          
+      # Everything was a success!
+      return (client_ip, client_port, new_sockobj)
+    elif response.startswith(CONNECT_FAIL):
+      raise SocketWouldBlockError("Unable to connect to any client currently.")
+          
+          
+
+          
+          
+  def connect_to_forwarder(self, localip, localport):
+    """
+    <Purpose>
+      To establish a connection to the forwarder. This connection is 
+      later used when tcpserversocket_getconnection() is called later.
+
+    <Arguments>
+      None
+
+    <Side Effects> 
+      None
+
+    <Return>
+      A socket like object that can be used for communication.
+    """
+
+    # We use the localip and localport provided to create an ID for
+    # the server connecting to the forwarder.
+    server_id = localip + ':' + str(localport)
+
+    # If a default forwarder is provided then we only try to use it.
+    # Otherwise we do a lookup for all the forwarders that are available.
+    if self.default_forwarder:
+      # We add the default forwarder in the forwarder list in the format that
+      # forwarders are usually advertised.
+      forwarder_list = [self.default_forwarder[0] + ':' + str(self.default_forwarder[1])]
+    else:
+      try:
+        forwarder_list = self.forwarder_cache.lookup(NAT_FORWARDER_KEY, graceperiod=5, timeout=15)
+      except AdvertiseError:
+        return None
+
+
+
+    # Now that we have a list of forwarders, try to connect to each one until
+    # we successfully do. 
+    for cur_forwarder in forwarder_list:
+
+      # If there's no results, we sometimes get the empty string back
+      # from the advertising lookup.
+      if not cur_forwarder:
+        continue
+
+      forwarder_ip, forwarder_port_str = cur_forwarder.split(':')
+      forwarder_port = int(forwarder_port_str)
+
+      try:
+        affix_stack_object = AffixStackInterface(_NAT_AFFIX_STRING)
+        sockobj = affix_stack_object.openconnection(forwarder_ip, forwarder_port, localip, localport, _NAT_AFFIX_DEFAULT_TIMEOUT)
+      # MMM: Should we also catch RepyArgumentError and AddressbindingError here? Currently we raise those.
+      except (DuplicateTupleError, AlreadyListeningError, CleanupInProgressError, 
+              ConnectionRefusedError, TimeoutError, InternetConnectivityError):
+        continue
+      else:
+        # Once we are connected, 
+        session_sendmessage(sockobj, SERVER_REGISTER + ',' + str(server_id))
+            
+        # Make sure we are connected to the forwarder. We do this by sending
+        # the forwarder the unique ID for this particular connection. If the
+        # server returns a confirmation msg then we are connected and we can
+        # return the socket object. It is possible that the forwarder will 
+        # return other messages such as SERVER_FULL or CONNECTION_REFUSED msg.
+        # In which case we move on to the next forwarder.
+        confirmation_msg = session_recvmessage(sockobj)
+        if confirmation_msg == CONNECT_SUCCESS:
+          if not self.default_forwarder:
+            if _NAT_AFFIX_DEBUG_MODE:
+              log("Setting the default forwarder\n")
+            self.default_forwarder.append(forwarder_ip)
+            self.default_forwarder.append(forwarder_port)
+
+          if _NAT_AFFIX_DEBUG_MODE:
+            log("Connected to forwarder, returning. Default forwarder is: " + str(self.default_forwarder) + "\n")
+          return sockobj
+        else:
+          continue
+    # If we have exhausted all the forwarders in the forwarder list then we
+    # return None.
+    else:
+      return None
+    
+
+    
+    
+    
+# ================================================
+# Helper Functions
+# ================================================
+  def retrieve_random_tcp_port(self):
+    # We look up the allowed TCP ports and which ports are already being used.
+    # Then we pick an available port and use it as the localport to make a
+    # connection to the out node.	
+    (resource_list_limit, resource_list_usage, stoptimes) = getresources()
+    available_ports = list(resource_list_limit['connport'] - resource_list_usage['connport'])
+
+
+    # Choose a random port out of the available ports.
+    rand_index = int(randomfloat() * (len(available_ports)-1))
+    localport = available_ports[rand_index]
+
+    return localport
+
+    
+
+    
+
+
+# ---------------------- Required Public functions ------------------------
+
+  def copy(self):
+    """
+    Make a copy of self.
+    """
+
+    affix_stack_copy = self.affix_context['affix_stack'].deepcopy()
+    optional_args_copy = self.affix_context['optional_args']
+
+    affix_copy = NatPunchAffix(affix_stack_copy, optional_args_copy)
+    affix_copy.default_forwarder = self.default_forwarder
+
+    return affix_copy
+
+
+
+
+  def get_advertisement_string(self):
+    """
+    The NatPunchAffix will advertise the forwarder it is using if it has
+    a default forwarder. Ther server should always fill this in when 
+    doing tcpserver_getconnection.
+    """
+    if _NAT_AFFIX_DEBUG_MODE:
+      log("Default forwarder is: " + str(self.default_forwarder) + "\n")
+    if self.default_forwarder:
+      if _NAT_AFFIX_DEBUG_MODE:
+        log("Going to advertise forwarder ip:port\n")
+      forwarder_ip, forwarder_port = self.default_forwarder
+      nat_ad_string = "(NatPunchAffix,%s:%d)" % (forwarder_ip, forwarder_port)
+    else:
+      nat_ad_string = "(NatPunchAffix)"
+
+    return nat_ad_string + self.peek().get_advertisement_string()
+
+
+
+
+
+class NatAffixError (AffixInternalError):
+  """
+  This error should be raised if there are no Nat Forwarders
+  available or cannot connect to the Forwarders.
+  """
+  pass
+
+  
+  
+  
+  
+  

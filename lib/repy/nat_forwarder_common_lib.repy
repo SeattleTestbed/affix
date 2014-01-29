@@ -1,11 +1,11 @@
 """
 This is a common library that keeps track of some variables.
 This library is imported by both the nat_forwarder.repy and
-by natpunchshim.repy
+by natpunchaffix.repy
 """
 
 # Key to advertise forwarder with.
-NAT_FORWARDER_KEY = '__NAT_SHIM_FORWARDER__'
+NAT_FORWARDER_KEY = '__NAT_AFFIX_FORWARDER__'
 
 
 # Connection Tags.

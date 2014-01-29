@@ -16,8 +16,8 @@ include serialize.repy
 
 
 # Hmm, perhaps I should make an initialization call instead of hardcoding this?
-# I suppose it doesn't matter since one can always override these values
-v2servername = "betaseattleclearinghouse.poly.edu"
+# I suppose it doesn't matter since one can always override these values.
+v2servername = "advertiseserver_v2.poly.edu"
 # This port is updated to use the new port (legacy port is 10101)
 v2serverport = 10102
 
@@ -73,7 +73,8 @@ def v2centralizedadvertise_announce(key, value, ttlval):
   
   # send the data over a timeout socket using the session library, then
   # get a response from the server.
-  sockobj = timeout_openconn(v2servername,v2serverport, timeout=10)
+  sockobj = timeout_openconnection(gethostbyname(v2servername), v2serverport, 
+    timeout=10)
   try:
     session_sendmessage(sockobj, datastringtosend)
     rawresponse = session_recvmessage(sockobj)
@@ -134,8 +135,10 @@ def v2centralizedadvertise_lookup(key, maxvals=100):
   messagetosend = ('GET',key,maxvals)
   messagestringtosend = serialize_serializedata(messagetosend)
 
-
-  sockobj = timeout_openconn(v2servername,v2serverport, timeout=10)
+  # send the data over a timeout socket using the session library, then
+  # get a response from the server.
+  sockobj = timeout_openconnection(gethostbyname(v2servername), v2serverport, 
+    timeout=10)
   try:
     session_sendmessage(sockobj, messagestringtosend)
     rawreceiveddata = session_recvmessage(sockobj)

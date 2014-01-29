@@ -55,6 +55,10 @@ import traceback
 import servicelogger
 
 from repyportability import *
+_context = locals()
+add_dy_support(_context)
+
+dy_import_module_symbols("sockettimeout.repy")
 
 connectionlock = createlock()
   
@@ -117,6 +121,12 @@ class AccepterThread(threading.Thread):
         IP, port, client_socket = self.serversocket.getconnection()
         connection_handler(IP, port, client_socket)
       except SocketWouldBlockError:
+        sleep(0.5)
+      except SocketTimeoutError:
+        sleep(0.5)
+      except:
+        # MMM: For some reason, the SocketTimeoutError was not catching
+        # the exception even though the type of error raised is SocketTimeoutError.
         sleep(0.5)
 
   def close_serversocket(self):

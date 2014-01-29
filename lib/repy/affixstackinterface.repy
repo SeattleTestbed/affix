@@ -1,0 +1,225 @@
+#!python
+"""
+<Program Name>
+  affixstackinterface.repy
+
+<Author>
+  Monzur Muhammad, monzum@cs.washington.edu
+  Danny Y. Huang, yh1@cs.williams.edu
+
+<Date Started>
+  June 2010, refactored in Feb 2011.
+
+<Description>
+  AFFIX is a framework that allows users to modify the
+  network behavior of their application by using various
+  software defined AFFIX Components. AffixStackInterface
+  is a wrapper module that is used load various AFFIX 
+  components to build a stack that can be used by the 
+  application. The purpose of each AFFIX component is to
+  address various networking issues or enhancements such 
+  as packet loss, nat traversal, bandwidth limitations etc.
+
+  Users may use any of the provided AFFIX components that 
+  are distributed with the AFFIX framework or they may build
+  their own AFFIX components to fit their need.
+
+  The AFFIX interface is used to initialize and build an
+  AffixStack object by providing an AFFIX stack string, where
+  the AFFIX stack string describes which AFFIX components 
+  need to be used for a connection. The AFFIX framework
+  consists of network calls that are semantically consistent
+  with the Repy V2 network API which can be found here:
+  https://seattle.poly.edu/wiki/RepyV2API
+
+<Usage>
+  This is a library file that must be imported by the application
+  in order for the application to use AFFIX for network 
+  communication. Once the user has imported the affixstackinterface
+  module, they can create and initialize an AffixStackInterface 
+  object. The AffixStackInterface object has various network wrapper
+  calls that may be used for communication. 
+
+
+  Sample Usage:
+  -------------
+
+  Importing affixstackinterface.repy library:
+
+    # Importing affixstackinterface.repy.
+    try:
+      dy_import_module_symbols("affixstackinterface.repy")
+    except NameError: 
+      # If dylink from repy is not available, we must import
+      # and initialize it.
+      import repyportability
+      _context = locals()
+      add_dy_support(_context)
+
+      dy_import_module_symbols("affixstackinterface.repy")
+
+
+  Creating and using AffixStackInterface module:
+
+    # In this example we will be using the Compression
+    # AFFIX to compress all network traffic.
+    #
+    # We will also be assigning our connections a
+    # virtual host name which can be used by the client
+    # to connect to the server.
+    #
+    # We also recommend that every connection uses the 
+    # Coordination AFFIX at the top of their stack, 
+    # which helps balance the AFFIX stack on both the 
+    # client and server side. 
+
+    affix_string = "(CoordinationAffix)(CompressionAffix)"
+    virtual_host_name = "example_affix_connection"
+
+    affix_object = AffixStackInterface(affix_string, virtual_host_name)
+
+    # Open up a server socket that can be used to accept incoming 
+    # TCP connections. Documentation on Repy V2 network API can be
+    # found here: https://seattle.poly.edu/wiki/RepyV2API
+    tcp_sock_obj = affix_object.listenforconnection(getmyip(), 12345)
+
+    # Accept an incoming connection that now uses the AFFIX
+    # framework for network communication.
+    accept_socket = tcp_sock_obj.getconnection()
+"""
+
+# Import the main affix stack library that allows us to build
+# the affix stack. affix_stack.repy has most of the core code
+# that initializes different affix components and builds a 
+# stack that is ready to be used by the application.
+dy_import_module_symbols("affix_stack")
+
+
+class AffixStackInterface:
+
+
+  def __init__(self, stack_str="", virtual_host_name=""):
+    """
+    <Purpose> 
+      Initialize the AffixStackInterface and register the
+      hostname or ip address of the node. We allow users to
+      identify each unique virtual connection with an unique 
+      name. If an argument is provided for virtual host name,
+      it is used as the connection name for this instance.
+      Note that calling getmyip() will return the virtual host 
+      name that was provided instead of the actual ip address of 
+      the node. If a name or id is not provided for the connection
+      then the local ip address of the machine is used as the
+      virtual host name.
+  
+    <Arguments>
+      stack_str - The affix stack string that will be used to build
+        a affix stack later on.
+
+      virtual_host_name - a hostname or ip address for the node 
+        that can be used to identify this connection on the node.
+        Often times the user might want to identify the network
+        connection with an unique id other then just the IP address
+        and the port due to there being duplicate IP addresses and
+        ports (when a node is in a private network).
+    <Exception>
+      None
+
+    <Side Effects>
+      Invoking the getmyip() call through the ShimStackInterface
+      will no longer return the local ip address if virtual host
+      name was set.
+
+    <Return>
+      None
+    """
+
+    # If the user has not provided a virtual name with which 
+    # the user wants to identify the connection, then we default
+    # to the ip address of the node.
+    if virtual_host_name == '':
+      try:
+        virtual_host_name = getmyip()
+      except InternetConnectivityError:
+        virtual_host_name = '127.0.0.1'
+
+    # If the user does not provide any AFFIX string then we default
+    # to a noop AFFIX. Since only the BaseAffix has the ability to
+    # escape the AFFIX framework and call the underlying network
+    # API, we need at least one AFFIX component in the stack.
+    if not stack_str:
+      stack_str = '(NoopAffix)'
+
+    # Set the instance variables
+    self._stack_str = stack_str
+    self._virtual_host_name = virtual_host_name
+
+    
+    
+
+  def getmyip(self):
+    """
+    Return the virtual host name that is associated with this connection. 
+    It could be some random key or server name set by the user when the
+    ShimStackInterface object was initialized or the local ip address if
+    the user did not set the virtual host name.
+    """
+    return self._virtual_host_name
+
+
+
+  # ...........................................................................
+  # Public methods that interface with the application.
+  # ----------------------------------------------------
+  # These functions defined below are used to overload the Repy V2
+  # network calls. These defined network calls are used to use the
+  # affix stack to perform network calls. We have only overloaded 
+  # top level network calls. Any definition of handles or sockets
+  # are overloaded in the AffixStack object.
+  #
+  # The definition of the RepyV2 API can be found at:
+  # https://seattle.poly.edu/wiki/RepyV2API
+  # ...........................................................................
+
+  def sendmessage(self, destip, destport, message, localip, localport):
+    affix_stack = AffixStack(self._stack_str, self._virtual_host_name)
+    return affix_stack.peek().sendmessage(destip, destport, message, localip, localport)
+
+
+
+  def openconnection(self, destip, destport, localip, localport, timeout):
+    affix_stack = AffixStack(self._stack_str, self._virtual_host_name)
+    return affix_stack.peek().openconnection(destip, destport, localip, localport, timeout)
+
+
+
+  def listenformessage(self, localip, localport):
+    affix_stack = AffixStack(self._stack_str, self._virtual_host_name)
+
+    return affix_stack.peek().listenformessage(localip, localport)
+
+
+
+  def listenforconnection(self, localip, localport):
+    affix_stack = AffixStack(self._stack_str, self._virtual_host_name)
+    return affix_stack.peek().listenforconnection(localip, localport)
+
+
+  # ............................................................................
+  # Private functions used by AffixStackInterface.
+  # ............................................................................
+
+  def _create_affix_stack_object():
+    # The purpose of this function is to generate the affix stack with 
+    # the affix string and localhost that this AffixStackInterface has 
+    # been initialized with. The reason we seperate out this function
+    # is to handle various errors and ensure that the internal errors
+    # are not seen by the application layer. This may be subject to
+    # change.
+    try:
+      AffixStack(self._stack_str, self._localhost)
+    except AffixError, err_msg:
+      # Should we raise a ConnectionRefusedError here? 
+      # ConnectionRefusedError does not make sense for some api calls
+      # such as listenforconnection().
+      raise ConnectionRefusedError(err_msg)

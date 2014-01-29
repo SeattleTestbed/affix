@@ -80,6 +80,14 @@ import os           # This is for some path manipulation
 import sys          # This is to get sys.executable to launch the external process
 import time         # This is to sleep
 
+# Currently required to filter out Android-specific debug messages, cf #1080
+# and safe_check() below
+try:
+  import android
+  IS_ANDROID = True
+except ImportError:
+  IS_ANDROID = False
+
 # Hide the DeprecationWarning for compiler
 import warnings
 warnings.simplefilter('ignore')
@@ -102,7 +110,8 @@ subprocess.getattr = getattr
 # Armon: This is how long we will wait for the external process
 # to validate the safety of the user code before we timeout, 
 # and exit with an exception
-EVALUTATION_TIMEOUT = 10
+# AR: Increasing timeout to 15 seconds, see r3410 / #744
+EVALUTATION_TIMEOUT = 15
 
 if platform.machine().startswith('armv'):
   # The Nokia needs more time to evaluate code safety, especially
@@ -212,7 +221,7 @@ _NODE_ATTR_OK = ['value']
 def _check_node(node):
   """
   <Purpose>
-    Examines a node, it's attributes, and all of its children (recursively) for safety.
+    Examines a node, its attributes, and all of its children (recursively) for safety.
     A node is safe if it is in _NODE_CLASS_OK and an attribute is safe if it is
     not a unicode string and either in _NODE_ATTR_OK or is safe as is 
     defined by _is_string_safe()
@@ -237,6 +246,12 @@ def _check_node(node):
 
     if attribute in _NODE_ATTR_OK: 
       continue
+
+    # JAC: don't check doc strings for __ and the like... (#889)
+    if attribute == 'doc' and (node.__class__.__name__ in
+      ['Module', 'Function', 'Class']):
+      continue
+
 
     # Check the safety of any strings
     if not _is_string_safe(value):
@@ -317,9 +332,48 @@ def safe_check_subprocess(code):
                     ("+str(nonportable.getruntime() - starttime)+" seconds)"
   
   # Read the output and close the pipe
-  output = proc.stdout.read()
+  rawoutput = proc.stdout.read()
   proc.stdout.close()
-  
+
+
+  # Interim fix for #1080: Get rid of stray debugging output on Android
+  # of the form "dlopen libpython2.6.so" and "dlopen /system/lib/libc.so",
+  # yet preserve all of the other output (including empty lines).
+
+  if IS_ANDROID:
+    output = ""
+    for line in rawoutput.split("\n"):
+      # Preserve empty lines
+      if line == "":
+        output += "\n"
+        continue
+      # Suppress debug messages we know can turn up
+      wordlist = line.split()
+      if wordlist[0]=="dlopen":
+        if wordlist[-1]=="/system/lib/libc.so":
+          continue
+        if wordlist[-1].startswith("libpython") and \
+          wordlist[-1].endswith(".so"):
+          # We expect "libpython" + version number + ".so".
+          # The version number should be a string convertible to float.
+          # If it's not, raise an exception.
+          try:
+            versionstring = (wordlist[-1].replace("libpython", 
+              "")).replace(".so", "")
+            junk = float(versionstring)
+          except TypeError, ValueError:
+            raise Exception("Unexpected debug output '" + line + 
+              "' while evaluating code safety!")
+      else:
+        output += line + "\n"
+
+    # Strip off the last newline character we added
+    output = output[0:-1]
+
+  else: # We are *not* running on Android, proceed with unfiltered output
+    output = rawoutput
+
+
   # Check the output, None is success, else it is a failure
   if output == "None":
     return True
@@ -378,10 +432,20 @@ def safe_type(*args, **kwargs):
     raise exception_hierarchy.RunBuiltinException(
       'type() may only take exactly one non-keyword argument.')
 
-#  # Fix for #1189
+  # Fix for #1189
 #  if _type(args[0]) is _type or _type(args[0]) is _compile_type:
 #    raise exception_hierarchy.RunBuiltinException(
 #      'unsafe type() call.')
+  # JAC: The above would be reasonable, but it is harsh.   The wrapper code for
+  # the encasement library needs to have a way to check the type of things and
+  # these might be inadvertantly be types.   It is hard to know if something
+  # is a type
+  if args[0] == safe_type or args[0] == _type or _type(args[0]) is _type:
+    return safe_type
+
+  if _type(args[0]) is _type or _type(args[0]) is _compile_type:
+    raise exception_hierarchy.RunBuiltinException(
+      'unsafe type() call.')
 
   return _type(args[0])
 
@@ -570,7 +634,7 @@ class SafeDict(UserDict.DictMixin):
     SafeDict is used by virtual_namespace (for the safe eval) as the dictionary
     of variables that will be accessible to the running code. The reason it is
     important to prevent unsafe keys is because it is possible to use them to
-    break out of the sandbox. For example, it is possible to change an objects
+    break out of the sandbox. For example, it is possible to change an object's
     private variables by manually bypassing python's name mangling.
   """
 
@@ -650,6 +714,20 @@ class SafeDict(UserDict.DictMixin):
 
     # Return the safe keys
     return safe_keys
+
+  # allow us to be printed
+  # this gets around the __repr__ infinite loop issue ( #918 ) for simple cases
+  # It seems unlikely this is adequate for more complex cases (like safedicts
+  # that refer to each other)
+  def __repr__(self):
+    newdict = {}
+    for safekey in self.keys():
+      if self.__under__[safekey] == self:
+        newdict[safekey] = newdict
+      else:
+        newdict[safekey] = self.__under__[safekey]
+    return newdict.__repr__()
+
 
   # Allow a copy of us
   def copy(self):

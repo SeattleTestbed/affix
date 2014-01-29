@@ -27,6 +27,42 @@ include random.repy
 
 include sockettimeout.repy
 
+def _getusableport():
+  """
+  <Purpose>
+    Discover which port the server can use for announcements.
+
+  <Arguments>
+    None
+
+  <Exceptions>
+    None
+
+  <Side Effects>
+    None
+
+  <Returns>
+    An integer port
+  """
+  port_found = False
+  port_min = 63100
+  port_max = 63180
+  port_iter = port_min
+  local_addr = getmyip()
+
+  while not port_found:
+    if port_iter > port_max:
+      raise Exception("Network restriction error! Unable to find a free port!")
+    try:
+      tcp_test_socket = listenforconnection(local_addr, port_iter)
+      tcp_test_socket.close()
+      port_found = True
+    except Exception, e:
+      log(str(e) + "\n")
+      port_iter += 1
+
+  return port_iter
+
 
 
 # This function contacts the server to get the time from a NTP
@@ -93,7 +129,7 @@ def tcp_time_updatetime(localport):
     remoteport = int(remoteaddress[1])
 
     try:
-      sockobject = timeout_openconn(remoteip,remoteport)
+      sockobject = timeout_openconnection(remoteip, remoteport, getmyip(), _getusableport(), timeout=10)
     except Exception:
       serverindex +=1
     else:

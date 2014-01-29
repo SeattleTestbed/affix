@@ -69,6 +69,40 @@ nmclient_handledict = {}
 # needed when assigning new handles to prevent race conditions...
 nmclient_handledictlock = createlock()
 
+def _getusableport():
+  """
+  <Purpose>
+    Discover which port the server can use for announcements.
+
+  <Arguments>
+    None
+
+  <Exceptions>
+    None
+
+  <Side Effects>
+    None
+
+  <Returns>
+    An integer port
+  """
+  port_found = False
+  port_min = 63000
+  port_max = 63150
+  port_iter = port_min
+  local_addr = getmyip()
+
+  while not port_found:
+    if port_iter > port_max:
+      raise Exception("Network restriction error! Unable to find a free port!")
+    try:
+      tcp_test_socket = listenforconnection(local_addr, port_iter)
+      tcp_test_socket.close()
+      port_found = True
+    except Exception, e:
+      port_iter += 1
+
+  return port_iter
 
 
 # Note: I open a new connection for every request.   Is this really what I want
@@ -91,7 +125,7 @@ def nmclient_rawcommunicate(nmhandle, *args):
   else:
     # do the normal openconn
     try:
-      thisconnobject = timeout_openconn(nmclient_handledict[nmhandle]['IP'], nmclient_handledict[nmhandle]['port'],timeout=nmclient_handledict[nmhandle]['timeout']) 
+      thisconnobject = timeout_openconnection(nmclient_handledict[nmhandle]['IP'], nmclient_handledict[nmhandle]['port'], getmyip(), _getusableport(), timeout=nmclient_handledict[nmhandle]['timeout']) 
     except Exception, e:
       raise NMClientException, str(e)
 
@@ -176,7 +210,7 @@ def nmclient_signedcommunicate(nmhandle, *args):
   else:  
 
     try:
-      thisconnobject = timeout_openconn(nmclient_handledict[nmhandle]['IP'], nmclient_handledict[nmhandle]['port'], timeout=nmclient_handledict[nmhandle]['timeout'])
+      thisconnobject = timeout_openconnection(nmclient_handledict[nmhandle]['IP'], nmclient_handledict[nmhandle]['port'], getmyip(), _getusableport(), timeout=nmclient_handledict[nmhandle]['timeout'])
     except Exception, e:
       raise NMClientException, str(e)
 

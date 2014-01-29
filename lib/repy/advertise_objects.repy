@@ -54,7 +54,7 @@ class LookupCache():
     self.refresh_time = refresh_time
 
   
-  def lookup(self,key, maxvals=100, lookuptype=["central", "central_v2", "UDP"], \
+  def lookup(self,key, maxvals=100, lookuptype=['central','central_v2','UDP'], \
                             concurrentevents=2, graceperiod=10, timeout=60):    
     """
     <Purpose>
@@ -78,7 +78,7 @@ class LookupCache():
       results = advertise_lookup(key, maxvals, lookuptype,concurrentevents,
                               graceperiod, timeout)
       
-      if len(results) > 0:
+      if len(results) > 0 and results[0] != '':
         # don't cache results of a failed lookup
         self.cache[key] = {'results':results,'time':getruntime()}
 
