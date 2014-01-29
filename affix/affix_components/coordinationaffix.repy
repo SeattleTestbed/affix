@@ -38,9 +38,11 @@ dy_import_module_symbols("affix_exceptions")
 dy_import_module_symbols("affixstackinterface")
 
 # Whether we want to print debug statements.
-_COORDINATION_AFFIX_DEBUG_MODE = True
+_COORDINATION_AFFIX_DEBUG_MODE = False
 
 zenodotus_subdomain = 'zenodotus.poly.edu'
+
+coordination_lookup_cache = LookupCache(300)
 
 class CoordinationAffix(BaseAffix):
 
@@ -216,7 +218,7 @@ class CoordinationAffix(BaseAffix):
 
     # Look up the server's affix stack under this key.
     server_key = str(desthost) + ',' + str(destport) + ',TCP'
-    lookup_result_list = LookupCache().lookup(server_key)
+    lookup_result_list = coordination_lookup_cache.lookup(server_key)
 
     if _COORDINATION_AFFIX_DEBUG_MODE:
       print "Lookup result is: " + str(lookup_result_list)
@@ -306,6 +308,9 @@ class CoordinationAffix(BaseAffix):
     else:
       localip = localhost
 
+    if _COORDINATION_AFFIX_DEBUG_MODE:
+      print "Coordination is about to start UDP server socket on '%s:%d'" % (localhost, localport)
+
     # Start listening so we have a complete view of the affix stack below us.
     udpserversocket = self.peek().listenformessage(localip, localport)
 
@@ -314,6 +319,9 @@ class CoordinationAffix(BaseAffix):
     adv_key = str(localip) + ',' + str(localport) + ',UDP'
     adv_value = self.peek().get_advertisement_string()
     adv_handle = AdvertisePipe().add(adv_key, adv_value)
+
+    if _COORDINATION_AFFIX_DEBUG_MODE:
+      log('CoordinationAffix: Advertised', adv_key, adv_value, '\n')
 
     # We need to save the advertisement handle to a global dictionary, so that
     # we can keep a reference to the handle. Later on, when we stop listening,
@@ -367,7 +375,7 @@ class CoordinationAffix(BaseAffix):
 
     # Now we obtain the server's affix stack string representation from which we
     # will construct the client's affix stack. 
-    lookup_result_list = LookupCache().lookup(server_key)
+    lookup_result_list = coordination_lookup_cache.lookup(server_key)
 
     if lookup_result_list:
 
