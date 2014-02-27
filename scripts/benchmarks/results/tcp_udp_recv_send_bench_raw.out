@@ -1,80 +1,80 @@
-Python TCP nonblock: Throughput: 51836.0530799 KB/s
-Python TCP recv/repy send: Throughput: 24503.9578382 KB/s
-Python TCP send/repy recv: Throughput: 36686.0628891 KB/s
-Repy TCP nonblock: Throughput: 19918.7473021 KB/s
-Python UDP nonblock: Throughput: 23322.1305438 KB/s
-Python UDP recv/repy send nonblock: Throughput: 6445.17801119 KB/s
-Python UDP send/repy recv nonblock: Throughput: 21054.1848856 KB/s
-Repy UDP nonblock: Throughput: 5625.81157956 KB/s
-Python TCP nonblock: Throughput: 50550.9037517 KB/s
-Python TCP recv/repy send: Throughput: 24350.3875364 KB/s
-Python TCP send/repy recv: Throughput: 36579.9826461 KB/s
-Repy TCP nonblock: Throughput: 19188.3543674 KB/s
-Python UDP nonblock: Throughput: 21306.6139139 KB/s
-Python UDP recv/repy send nonblock: Throughput: 6264.90752385 KB/s
-Python UDP send/repy recv nonblock: Throughput: 21573.9700925 KB/s
-Repy UDP nonblock: Throughput: 5545.01857495 KB/s
-Python TCP nonblock: Throughput: 51892.779267 KB/s
-Python TCP recv/repy send: Throughput: 24045.7298314 KB/s
-Python TCP send/repy recv: Throughput: 37386.9217125 KB/s
-Repy TCP nonblock: Throughput: 19257.211323 KB/s
-Python UDP nonblock: Throughput: 21514.1274388 KB/s
-Python UDP recv/repy send nonblock: Throughput: 6356.31395961 KB/s
-Python UDP send/repy recv nonblock: Throughput: 21487.5960374 KB/s
-Repy UDP nonblock: Throughput: 5500.32525547 KB/s
-Python TCP nonblock: Throughput: 49255.5977768 KB/s
-Python TCP recv/repy send: Throughput: 23612.5137865 KB/s
-Python TCP send/repy recv: Throughput: 35360.6474207 KB/s
-Repy TCP nonblock: Throughput: 19117.7556803 KB/s
-Python UDP nonblock: Throughput: 21806.0300222 KB/s
-Python UDP recv/repy send nonblock: Throughput: 6393.95704738 KB/s
-Python UDP send/repy recv nonblock: Throughput: 21574.5450986 KB/s
-Repy UDP nonblock: Throughput: 5560.53698983 KB/s
-Python TCP nonblock: Throughput: 53605.5495162 KB/s
-Python TCP recv/repy send: Throughput: 24225.1808822 KB/s
-Python TCP send/repy recv: Throughput: 35393.3462553 KB/s
-Repy TCP nonblock: Throughput: 19161.5831207 KB/s
-Python UDP nonblock: Throughput: 21755.8433601 KB/s
-Python UDP recv/repy send nonblock: Throughput: 6548.9746331 KB/s
-Python UDP send/repy recv nonblock: Throughput: 22072.780073 KB/s
-Repy UDP nonblock: Throughput: 5740.07571208 KB/s
-Python TCP nonblock: Throughput: 52291.9406904 KB/s
-Python TCP recv/repy send: Throughput: 23953.0175467 KB/s
-Python TCP send/repy recv: Throughput: 36749.0323412 KB/s
-Repy TCP nonblock: Throughput: 20084.4602279 KB/s
-Python UDP nonblock: Throughput: 20976.9722656 KB/s
-Python UDP recv/repy send nonblock: Throughput: 6503.60496745 KB/s
-Python UDP send/repy recv nonblock: Throughput: 20927.4868803 KB/s
-Repy UDP nonblock: Throughput: 5722.5564884 KB/s
-Python TCP nonblock: Throughput: 50066.8861834 KB/s
-Python TCP recv/repy send: Throughput: 24903.2414046 KB/s
-Python TCP send/repy recv: Throughput: 37567.5998364 KB/s
-Repy TCP nonblock: Throughput: 19540.9568459 KB/s
-Python UDP nonblock: Throughput: 21101.5051504 KB/s
-Python UDP recv/repy send nonblock: Throughput: 6463.12502284 KB/s
-Python UDP send/repy recv nonblock: Throughput: 21633.5288599 KB/s
-Repy UDP nonblock: Throughput: 5658.54289391 KB/s
-Python TCP nonblock: Throughput: 52994.3019691 KB/s
-Python TCP recv/repy send: Throughput: 24316.1657219 KB/s
-Python TCP send/repy recv: Throughput: 37259.4181682 KB/s
-Repy TCP nonblock: Throughput: 19716.908083 KB/s
-Python UDP nonblock: Throughput: 20906.8491815 KB/s
-Python UDP recv/repy send nonblock: Throughput: 6315.84433138 KB/s
-Python UDP send/repy recv nonblock: Throughput: 20595.5850305 KB/s
-Repy UDP nonblock: Throughput: 5590.5237087 KB/s
-Python TCP nonblock: Throughput: 52144.9229274 KB/s
-Python TCP recv/repy send: Throughput: 23538.4077731 KB/s
-Python TCP send/repy recv: Throughput: 35628.6903142 KB/s
-Repy TCP nonblock: Throughput: 18252.3686395 KB/s
-Python UDP nonblock: Throughput: 20223.7116094 KB/s
-Python UDP recv/repy send nonblock: Throughput: 6180.73968342 KB/s
-Python UDP send/repy recv nonblock: Throughput: 21388.1557644 KB/s
-Repy UDP nonblock: Throughput: 5572.22983752 KB/s
-Python TCP nonblock: Throughput: 55531.3474437 KB/s
-Python TCP recv/repy send: Throughput: 24196.9839406 KB/s
-Python TCP send/repy recv: Throughput: 35250.812216 KB/s
-Repy TCP nonblock: Throughput: 19560.0924714 KB/s
-Python UDP nonblock: Throughput: 20903.9054379 KB/s
-Python UDP recv/repy send nonblock: Throughput: 6173.47284031 KB/s
-Python UDP send/repy recv nonblock: Throughput: 21671.699242 KB/s
-Repy UDP nonblock: Throughput: 5595.57535751 KB/s
+Python TCP nonblock: Throughput: 58494.2317039 KB/s
+Python TCP recv/repy send: Throughput: 24538.8048534 KB/s
+Python TCP send/repy recv: Throughput: 37290.7587207 KB/s
+Repy TCP nonblock: Throughput: 19463.6536653 KB/s
+Python UDP nonblock: Throughput: 17389.0991695 KB/s
+Python UDP recv/repy send nonblock: Throughput: 19815.7955482 KB/s
+Python UDP send/repy recv nonblock: Throughput: 19974.521004 KB/s
+Repy UDP nonblock: Throughput: 14843.6949432 KB/s
+Python TCP nonblock: Throughput: 44806.145593 KB/s
+Python TCP recv/repy send: Throughput: 24151.1791104 KB/s
+Python TCP send/repy recv: Throughput: 37042.0198323 KB/s
+Repy TCP nonblock: Throughput: 19273.5044543 KB/s
+Python UDP nonblock: Throughput: 20266.0566435 KB/s
+Python UDP recv/repy send nonblock: Throughput: 19683.2179611 KB/s
+Python UDP send/repy recv nonblock: Throughput: 20515.0921987 KB/s
+Repy UDP nonblock: Throughput: 15947.503509 KB/s
+Python TCP nonblock: Throughput: 45589.8015169 KB/s
+Python TCP recv/repy send: Throughput: 24217.9875956 KB/s
+Python TCP send/repy recv: Throughput: 37632.2563569 KB/s
+Repy TCP nonblock: Throughput: 19089.5100539 KB/s
+Python UDP nonblock: Throughput: 19016.2080905 KB/s
+Python UDP recv/repy send nonblock: Throughput: 19134.7639769 KB/s
+Python UDP send/repy recv nonblock: Throughput: 18287.3895388 KB/s
+Repy UDP nonblock: Throughput: 15171.3460994 KB/s
+Python TCP nonblock: Throughput: 44572.9429318 KB/s
+Python TCP recv/repy send: Throughput: 22193.0315905 KB/s
+Python TCP send/repy recv: Throughput: 32941.4163461 KB/s
+Repy TCP nonblock: Throughput: 17800.2034716 KB/s
+Python UDP nonblock: Throughput: 18860.9497385 KB/s
+Python UDP recv/repy send nonblock: Throughput: 17523.886678 KB/s
+Python UDP send/repy recv nonblock: Throughput: 19411.527666 KB/s
+Repy UDP nonblock: Throughput: 15100.2058012 KB/s
+Python TCP nonblock: Throughput: 44167.1721144 KB/s
+Python TCP recv/repy send: Throughput: 21089.567564 KB/s
+Python TCP send/repy recv: Throughput: 33231.6741245 KB/s
+Repy TCP nonblock: Throughput: 19346.0026666 KB/s
+Python UDP nonblock: Throughput: 15434.9154387 KB/s
+Python UDP recv/repy send nonblock: Throughput: 19152.5462888 KB/s
+Python UDP send/repy recv nonblock: Throughput: 19835.4242575 KB/s
+Repy UDP nonblock: Throughput: 15627.1557966 KB/s
+Python TCP nonblock: Throughput: 56070.535211 KB/s
+Python TCP recv/repy send: Throughput: 21265.6666354 KB/s
+Python TCP send/repy recv: Throughput: 32699.9964032 KB/s
+Repy TCP nonblock: Throughput: 19185.1341329 KB/s
+Python UDP nonblock: Throughput: 16295.3644818 KB/s
+Python UDP recv/repy send nonblock: Throughput: 17382.8410389 KB/s
+Python UDP send/repy recv nonblock: Throughput: 20037.0527521 KB/s
+Repy UDP nonblock: Throughput: 14067.3746635 KB/s
+Python TCP nonblock: Throughput: 58524.3579994 KB/s
+Python TCP recv/repy send: Throughput: 19742.2489963 KB/s
+Python TCP send/repy recv: Throughput: 31606.1353301 KB/s
+Repy TCP nonblock: Throughput: 17970.1943769 KB/s
+Python UDP nonblock: Throughput: 19234.5072062 KB/s
+Python UDP recv/repy send nonblock: Throughput: 17841.0389252 KB/s
+Python UDP send/repy recv nonblock: Throughput: 18344.5306692 KB/s
+Repy UDP nonblock: Throughput: 15803.849635 KB/s
+Python TCP nonblock: Throughput: 48252.1063512 KB/s
+Python TCP recv/repy send: Throughput: 22575.1093927 KB/s
+Python TCP send/repy recv: Throughput: 36262.4093684 KB/s
+Repy TCP nonblock: Throughput: 15924.61675 KB/s
+Python UDP nonblock: Throughput: 17355.1209264 KB/s
+Python UDP recv/repy send nonblock: Throughput: 16701.4336863 KB/s
+Python UDP send/repy recv nonblock: Throughput: 21396.0798996 KB/s
+Repy UDP nonblock: Throughput: 15560.057917 KB/s
+Python TCP nonblock: Throughput: 53437.2355942 KB/s
+Python TCP recv/repy send: Throughput: 23795.7457071 KB/s
+Python TCP send/repy recv: Throughput: 37528.7523401 KB/s
+Repy TCP nonblock: Throughput: 18770.8968131 KB/s
+Python UDP nonblock: Throughput: 18369.076014 KB/s
+Python UDP recv/repy send nonblock: Throughput: 19434.8002931 KB/s
+Python UDP send/repy recv nonblock: Throughput: 19027.9465883 KB/s
+Repy UDP nonblock: Throughput: 15021.2516134 KB/s
+Python TCP nonblock: Throughput: 43069.453147 KB/s
+Python TCP recv/repy send: Throughput: 22421.2300309 KB/s
+Python TCP send/repy recv: Throughput: 37098.9290302 KB/s
+Repy TCP nonblock: Throughput: 15852.0088299 KB/s
+Python UDP nonblock: Throughput: 17335.4563918 KB/s
+Python UDP recv/repy send nonblock: Throughput: 16355.9011932 KB/s
+Python UDP send/repy recv nonblock: Throughput: 19463.8067579 KB/s
+Repy UDP nonblock: Throughput: 13997.0424932 KB/s

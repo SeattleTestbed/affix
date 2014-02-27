@@ -38,7 +38,7 @@ dy_import_module_symbols("affix_exceptions")
 dy_import_module_symbols("affixstackinterface")
 
 # Whether we want to print debug statements.
-_COORDINATION_AFFIX_DEBUG_MODE = False
+_COORDINATION_AFFIX_DEBUG_MODE = True
 
 zenodotus_subdomain = 'zenodotus.poly.edu'
 
@@ -59,7 +59,7 @@ class CoordinationAffix(BaseAffix):
   _zenodotus_advertise_active = False
 
   # How long a zenodotus to IP mapping may remain valid (time-to-live).
-  _ZENODOTUS_NAME_TTL = 15
+  _ZENODOTUS_NAME_TTL = 600
 
 
   def __init__(self, next_affix, optional_args=None):
@@ -108,7 +108,6 @@ class CoordinationAffix(BaseAffix):
 
     <Arguments>
       Same as the network API in repy v2.
-
     <Side Effects>
       See the documentation of AdvertiseObjects.
 
@@ -120,7 +119,7 @@ class CoordinationAffix(BaseAffix):
 
     """
     if _COORDINATION_AFFIX_DEBUG_MODE:
-      print "Coordination is about to start listening on '%s:%d'" % (localhost, localport)
+      log("Coordination is about to start listening on '%s:%d'\n" % (localhost, localport))
     # If we are listening on a zenodotus name, first translate it to the local
     # IP and start the advertisement thread that constantly announces the
     # zenodotus name -> IP mapping.
@@ -130,11 +129,26 @@ class CoordinationAffix(BaseAffix):
       except InternetConnectivityError:
         raise AddressBindingError('Coordination Affix: Not connected to the network.')
       self._zenodotus_start_advertise(localhost)
+      
+      if _COORDINATION_AFFIX_DEBUG_MODE:
+        log("CoordinationAffix started zenodotus advertise for: %s\n" % str(localhost))
     else:
       localip = localhost
 
     # Start listening so we have a complete view of the affix stack below us.
-    tcpserversocket = self.peek().listenforconnection(localip, localport)
+    # We try up to 5 times as we want to give some time for the zenodotus name
+    # to establish, if user is using it for localhost.
+    for i in range(5):
+      try:
+        tcpserversocket = self.peek().listenforconnection(localhost, localport)
+        break
+      except AddressBindingError:
+        sleep(0.1)
+    else:
+      raise AddressBindingError("Unable to bind with the localhost '%s' provided." % localhost)
+
+    if _COORDINATION_AFFIX_DEBUG_MODE:
+      log("CoordinationAffix started listening socket on '%s:%d'\n" % (localip, localport))
 
     # The underlying affix stack has been built completely. We can advertise the
     # affix stack.
@@ -211,7 +225,12 @@ class CoordinationAffix(BaseAffix):
     # If we are provided a zenodotus name, we will convert it to an IP
     # address.
     if desthost.endswith(zenodotus_subdomain):
-      destip = gethostbyname(desthost)
+      # If the destinationa address ends with zenodotus,
+      # we try to do a hostname lookup.
+      try:
+        destip = gethostbyname(desthost)
+      except NetworkAddressError:
+        destip = desthost
     else:
       destip = desthost
 
@@ -221,7 +240,7 @@ class CoordinationAffix(BaseAffix):
     lookup_result_list = coordination_lookup_cache.lookup(server_key)
 
     if _COORDINATION_AFFIX_DEBUG_MODE:
-      print "Lookup result is: " + str(lookup_result_list)
+      log("Lookup result for '" + server_key + "' is: " + str(lookup_result_list) + "\n")
 
     # Reverse the results as the latest affix advertisement always comes last.
     lookup_result_list.reverse()
@@ -240,7 +259,7 @@ class CoordinationAffix(BaseAffix):
       # Build my affix stack and store it in the affix_context.
       self.affix_context['next_affix'] = AffixStack(server_affix_stack_str, localhost).affix_stack_context['top_affix']
       if _COORDINATION_AFFIX_DEBUG_MODE:
-        log('CoordinationAffix: Trying affix stack', self.peek(), '\n')
+        log('CoordinationAffix: Trying affix stack for openconnection: ', self.peek(), '\n')
       # Check if we have exceeded the time limit.
       time_taken = getruntime() - start_time
       if time_taken > timeout:
@@ -248,9 +267,12 @@ class CoordinationAffix(BaseAffix):
 
       # Since we spent some time contacting the advertisement service, we have
       # less time for the actual openconn.
-      print "Using affix string: " + self.peek().get_advertisement_string()
+      if _COORDINATION_AFFIX_DEBUG_MODE:
+        log("Using affix string: " + self.peek().get_advertisement_string() + "to connect to '" +
+            destip + ":" + str(destport) + "'\n")
+
       try:
-        sock = self.peek().openconnection(destip, destport, localip, localport, timeout - time_taken)
+        sock = self.peek().openconnection(desthost, destport, localip, localport, timeout - time_taken)
         return AffixSocket(sock, self.copy())
 
       # We ignore the error here, as we may have been contacting a legacy
@@ -309,7 +331,7 @@ class CoordinationAffix(BaseAffix):
       localip = localhost
 
     if _COORDINATION_AFFIX_DEBUG_MODE:
-      print "Coordination is about to start UDP server socket on '%s:%d'" % (localhost, localport)
+      log("Coordination is about to start UDP server socket on '%s:%d'\n" % (localhost, localport))
 
     # Start listening so we have a complete view of the affix stack below us.
     udpserversocket = self.peek().listenformessage(localip, localport)
@@ -319,6 +341,7 @@ class CoordinationAffix(BaseAffix):
     adv_key = str(localip) + ',' + str(localport) + ',UDP'
     adv_value = self.peek().get_advertisement_string()
     adv_handle = AdvertisePipe().add(adv_key, adv_value)
+ 
 
     if _COORDINATION_AFFIX_DEBUG_MODE:
       log('CoordinationAffix: Advertised', adv_key, adv_value, '\n')
@@ -376,6 +399,7 @@ class CoordinationAffix(BaseAffix):
     # Now we obtain the server's affix stack string representation from which we
     # will construct the client's affix stack. 
     lookup_result_list = coordination_lookup_cache.lookup(server_key)
+
 
     if lookup_result_list:
 

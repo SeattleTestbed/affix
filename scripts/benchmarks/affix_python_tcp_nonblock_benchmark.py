@@ -33,7 +33,9 @@ sleep_time = 0.0001
 
 FIN_TAG="@FIN"
 
-port = 12345
+listening_port = 12345
+connecting_port = 12345
+
 server_address = '127.0.0.1'
 
 class server(threading.Thread):
@@ -49,7 +51,7 @@ class server(threading.Thread):
     # Create a new server socket and accept a connection when
     # there is an incoming connection.
     sock_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock_server.bind((server_address, port))
+    sock_server.bind((server_address, listening_port))
     sock_server.listen(5)
     sock_server.setblocking(0)
 
@@ -96,15 +98,20 @@ def main():
   """
   global block_size
   global start_time
+  global listening_port
+  global connecting_port
 
-  if len(sys.argv) < 3:
-    print "  $ python affix_python_tcp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB)"
+  if len(sys.argv) < 5:
+    print "  $ python affix_python_tcp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB) listening_port connecting_port"
     sys.exit(1)
 
   # Extract the user input to figure out what the block size will be 
   # and how much data to send in total.
   block_size = int(sys.argv[1])
   data_length = int(sys.argv[2]) * 1024 * 1024
+  listening_port = int(sys.argv[3])
+  connecting_port = int(sys.argv[4])
+
 
   repeat_data = random_string * block_size
   
@@ -120,7 +127,7 @@ def main():
   # the connection, send data repeatedly until we have sent
   # sufficient ammount.
   sockobj = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-  sockobj.connect((server_address, port))
+  sockobj.connect((server_address, connecting_port))
   sockobj.setblocking(0)
 
   start_time = time.time()
@@ -131,7 +138,13 @@ def main():
       time.sleep(sleep_time)
 
   # Send a signal telling the server we are done sending data.
-  sockobj.send(FIN_TAG)
+  while True:
+    try:
+      sockobj.send(FIN_TAG)
+      break
+    except socket.error:
+      time.sleep(sleep_time)
+
   sockobj.close()
   
 

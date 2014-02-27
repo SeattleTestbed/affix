@@ -7,6 +7,8 @@
   and legacy clients to connect to the server.
 """
 
+_DEBUG_MODE = False
+
 class LegacyAffixTCPServerSocket():
   """
   This is a wrapper TCPServerSocket for the legacy affix.
@@ -27,6 +29,7 @@ class LegacyAffixTCPServerSocket():
       that are affix enabled will get serviced first.
       MMM: Should we alternate between the two?
     """
+
     # If we were able to create the affix_tcpsocket, then we attempt to call
     # getconnection() on the affix tcp server socket first. If we were unable 
     # to create it or get a SocketWouldBlockError, we default to the basic
@@ -97,9 +100,7 @@ class LegacyAffix(BaseAffix):
         self.affix_string = optional_args[3]
       except ValueError:
         raise AffixInternalError("TCP or UDP listenport provided is not of type int.")
-      
-      # We build a new stack for the branch that accepts AFFIX connections.
-      self.affix_stack_branch = AffixStack(self.affix_string, self.server_name)
+
                                         
     BaseAffix.__init__(self, next_affix, optional_args)
 
@@ -122,10 +123,18 @@ class LegacyAffix(BaseAffix):
     <Return>
       The call will return a LegacyAffixTCPServerSocket object.
     """
+
+    # We build a new stack for the branch that accepts AFFIX connections.
+    self.affix_stack_branch = AffixStack(self.affix_string, self.server_name)
+
     tcpserversocket_dict = {}
 
     tcpserversocket_dict['affix_tcpsocket'] = self.affix_stack_branch.peek().listenforconnection(localip, self.tcp_listenport)
-    tcpserversocket_dict['repy_tcpsocket'] = listenforconnection(localip, localport)
+
+    tcpserversocket_dict['repy_tcpsocket'] = listenforconnection(gethostbyname(localip), localport)
+
+    if _DEBUG_MODE:
+      log("Opened up two listening sockets with Legacy Affix on '%s:%d'\n" % (localip, localport))
 
     return LegacyAffixTCPServerSocket(tcpserversocket_dict, self)
 
@@ -151,7 +160,13 @@ class LegacyAffix(BaseAffix):
     # 'should' only consist of a new CoordinationAffix. Thus we pass in
     # the server name and the tcp port that the Legacy AFFIX branch on the
     # server side is listening on.
+
+    # We build a new stack for the branch before doing openconnection.
+    self.affix_stack_branch = AffixStack(self.affix_string, self.server_name)
     try:
+      if _DEBUG_MODE:
+        log("LegacyAffix is opening connection to '%s:%d'\n" % (self.server_name, self.tcp_listenport))
+
       sockobj = self.affix_stack_branch.peek().openconnection(self.server_name, self.tcp_listenport, localip, localport, timeout)
       return AffixSocket(sockobj, self)
     except (DuplicateTupleError, ConnectionRefusedError):
@@ -159,7 +174,7 @@ class LegacyAffix(BaseAffix):
     
     # If we failed to use the Legacy AFFIX branch, we try a normal openconnection
     # and try to connect to the legacy branch that is not using AFFIX.
-    return openconnection(destip, destport, localip, localport, timeout)
+    return openconnection(gethostbyname(destip), destport, gethostbyname(localip), localport, timeout)
       
 
 
@@ -169,6 +184,8 @@ class LegacyAffix(BaseAffix):
       next_affix_copy = self.affix_context['next_affix'].copy()
     else:
       next_affix_copy = None
+
+
     return LegacyAffix(next_affix_copy, self.affix_context['optional_args'])
     
 

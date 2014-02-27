@@ -30,12 +30,16 @@ random_string = 'a'
 
 block_size = 1024 
 start_time = 0
-sleep_time = 0.000001
+sleep_time = 0.00001
+
+packet_sleep_time = 0.00001
 
 FIN_TAG="@FIN"
 total_data_sent = 0
 
-port = 12345
+listening_port = 12345
+connecting_port = 12345
+
 server_address = '127.0.0.1'
 
 class server(threading.Thread):
@@ -51,7 +55,7 @@ class server(threading.Thread):
     # Create a new server socket and accept a connection when
     # there is an incoming connection.
     sock_server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock_server.bind((server_address, port))
+    sock_server.bind((server_address, listening_port))
     sock_server.setblocking(0)
 
     # Now that we have accepted the connection, we will 
@@ -88,15 +92,24 @@ def main():
   global start_time
   global total_data_sent
   global start_time
+  global sleep_time
+  global connecting_port
+  global listening_port
 
-  if len(sys.argv) < 3:
-    print "  $ python affix_python_tcp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB)"
+  if len(sys.argv) < 5:
+    print "  $ python affix_python_tcp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB) listening_port connecting_port"
     sys.exit(1)
 
   # Extract the user input to figure out what the block size will be 
   # and how much data to send in total.
   block_size = int(sys.argv[1])
   data_length = int(sys.argv[2]) * 1024 * 1024
+  listening_port = int(sys.argv[3])
+  connecting_port = int(sys.argv[4])
+
+
+  if len(sys.argv) == 6:
+    sleep_time = float(sys.argv[3])
 
   repeat_data = random_string * block_size
   
@@ -109,6 +122,7 @@ def main():
   time.sleep(2)
 
   # Create a client socket and connect to the server. Following
+
   # the connection, send data repeatedly until we have sent
   # sufficient ammount.
   sockobj = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -117,16 +131,18 @@ def main():
   start_time = time.time()
   while total_data_sent < data_length:
     try:
-      total_data_sent += sockobj.sendto(repeat_data, (server_address, port))
+      #send_start_time = time.time()
+      total_data_sent += sockobj.sendto(repeat_data, (server_address, connecting_port))
     except socket.error:
       time.sleep(sleep_time)
       pass
 
   # Send a signal telling the server we are done sending data.
   # We send it multiple times in case of packet loss.
-  for i in range(10):
+  for i in range(15):
     try:
-      sockobj.sendto(FIN_TAG, (server_address, port))
+      sockobj.sendto(FIN_TAG, (server_address, connecting_port))
+      time.sleep(sleep_time)
     except socket.error:
       time.sleep(sleep_time)
     

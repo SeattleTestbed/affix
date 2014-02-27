@@ -35,6 +35,8 @@ block_size = 1024
 start_time = 0
 sleep_time = 0.00001
 
+packet_sleep_time = 0.00008
+
 FIN_TAG="@FIN"
 total_data_sent = 0
 
@@ -90,6 +92,7 @@ def main():
   global block_size
   global start_time
   global total_data_sent
+  global sleep_time
 
   if len(sys.argv) < 3:
     print "  $ python affix_python_tcp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB)"
@@ -99,6 +102,9 @@ def main():
   # and how much data to send in total.
   block_size = int(sys.argv[1])
   data_length = int(sys.argv[2]) * 1024 * 1024
+
+  if len(sys.argv) == 4:
+    sleep_time = float(sys.argv[3])
 
   repeat_data = random_string * block_size
   
@@ -121,8 +127,9 @@ def main():
     except SocketWouldBlockError:
       time.sleep(sleep_time)
       pass
+
   # Send a signal telling the server we are done sending data.
-  for i in range(10):
+  for i in range(15):
     try:
       sendmessage(server_address, port, FIN_TAG, myip, port+1)
     except SocketWouldBlockError:

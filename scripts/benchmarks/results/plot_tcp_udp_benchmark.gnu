@@ -11,11 +11,11 @@ set xtics font ",16"
 
 
 set key top left width 1
-set xlabel "Throughput (KBytes/s)"
-set ylabel "API type"
+set ylabel "Throughput (KBytes/s)"
+set xlabel "API type"
 
 set boxwidth 0.3
 set style fill solid
 
 plot 'tcp_udp_benchmark_average.out' using 2:xtic(1) with boxes notitle,\
-     'tcp_udp_benchmark_average.out' using 0:($2+1000):($2) with labels notitle
+     'tcp_udp_benchmark_average.out' using 0:($2+1000):($2) with labels font ",14" notitle

@@ -35,6 +35,8 @@ block_size = 1024
 start_time = 0
 sleep_time = 0.00001
 
+packet_sleep_time = 0.00008
+
 FIN_TAG="@FIN"
 total_data_sent = 0
 
@@ -97,6 +99,7 @@ def main():
   global block_size
   global start_time
   global total_data_sent
+  global sleep_time
 
   if len(sys.argv) < 3:
     print "  $ python affix_python_tcp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB)"
@@ -106,6 +109,9 @@ def main():
   # and how much data to send in total.
   block_size = int(sys.argv[1])
   data_length = int(sys.argv[2]) * 1024 * 1024
+
+  if len(sys.argv) == 4:
+    sleep_time = float(sys.argv[3])
 
   repeat_data = random_string * block_size
   
@@ -121,7 +127,7 @@ def main():
   # sufficient ammount through UDP.
 
   sockobj = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-  sockobj.setblocking(0)
+  #sockobj.setblocking(0)
 
   start_time = time.time()
   while total_data_sent < data_length:
@@ -133,7 +139,7 @@ def main():
 
   # Send a signal telling the server we are done sending data.
   # We send it multiple times in case of packet loss.
-  for i in range(10):
+  for i in range(15):
     try:
       sockobj.sendto(FIN_TAG, (server_address, port))
     except socket.error:

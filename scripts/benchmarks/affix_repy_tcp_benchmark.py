@@ -27,13 +27,13 @@ from repyportability import *
 _context = locals()
 add_dy_support(_context)
 
-start_time = 0
-
 # 1KB string size.
-random_string = 'abcdefgh' * 128
+random_string = 'a'
+#random_string = 'abcdefgh' * 128
 
 block_size = 1024 
-start_time
+start_time = 0
+sleep_time = 0.0001
 
 FIN_TAG="@FIN"
 
@@ -63,7 +63,7 @@ class server(threading.Thread):
         print "Accepted conn from: " + rip + ':' + str(rport)
         break
       except SocketWouldBlockError:
-        sleep(0.01)
+        time.sleep(sleep_time)
 
 
     # Now that we have accepted the connection, we will 
@@ -78,7 +78,7 @@ class server(threading.Thread):
           break
         recv_msg += cur_msg
       except SocketWouldBlockError:
-        sleep(0.01)
+        time.sleep(sleep_time)
       except SocketClosedRemote:
         break
 
@@ -106,11 +106,10 @@ def main():
 
   # Extract the user input to figure out what the block size will be 
   # and how much data to send in total.
-  block_multiplier = int(sys.argv[1])
+  block_size = int(sys.argv[1])
   data_length = int(sys.argv[2]) * 1024 * 1024
 
-  repeat_data = random_string * block_multiplier
-  block_size = block_size * block_multiplier
+  repeat_data = random_string * block_size
   
   total_sent = 0
 
@@ -123,16 +122,24 @@ def main():
   # Create a client socket and connect to the server. Following
   # the connection, send data repeatedly until we have sent
   # sufficient ammount.
-  sockobj = openconnection(server_address, port, getmyip(), port + 1, 10)
+  sockobj = openconnection(server_address, port, server_address, port + 1, 10)
 
   start_time = time.time()
   while total_sent < data_length:
     try:
       total_sent += sockobj.send(repeat_data)
     except SocketWouldBlockError:
-      sleep(0.01)
+      time.sleep(sleep_time)
   # Send a signal telling the server we are done sending data.
-  sockobj.send(FIN_TAG)
+
+  while True:
+    try:
+      sockobj.send(FIN_TAG)
+      break
+    except SocketWouldBlockError:
+      time.sleep(sleep_time)
+    except SocketClosedRemote:
+      break
   sockobj.close()
   
 

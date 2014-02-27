@@ -30,7 +30,8 @@ add_dy_support(_context)
 dy_import_module_symbols("affixstackinterface")
 
 # 1KB string size.
-random_string = 'abcdefgh' * 128
+random_string = 'a'
+#random_string = 'abcdefgh' * 128
 
 block_size = 1024 
 start_time = 0
@@ -38,7 +39,8 @@ sleep_time = 0.0001
 
 FIN_TAG="@FIN"
 
-port = 12345
+listening_port = 12345
+connecting_port = 12345
 server_address = '127.0.0.1'
 
 affix_string = '(NoopAffix)'
@@ -56,7 +58,7 @@ class server(threading.Thread):
     # Create a new server socket and accept a connection when
     # there is an incoming connection.
     affix_obj = AffixStackInterface(affix_string)
-    sock_server = affix_obj.listenforconnection(server_address, port)
+    sock_server = affix_obj.listenforconnection(server_address, listening_port)
 
     # Accept each incoming connection and launch a new client
     # benchmark thread that will time how long it took to 
@@ -92,7 +94,10 @@ class server(threading.Thread):
     print "Time to receive: %s\nTotal time: %s" % (str(total_recv_time), str(total_run_time))
     print "Total data received: %d KB. \nThroughput: %s KB/s" % (data_recv_len/1024, str(data_recv_len/total_run_time/1024))
 
-
+    try:
+      sock_server.close()
+    except:
+      pass
 
 
 def main():
@@ -103,18 +108,24 @@ def main():
   """
   global block_size
   global start_time
+  global listening_port
+  global connecting_port
+  global affix_string
 
-  if len(sys.argv) < 3:
-    print "  $ python affix_python_tcp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB)"
+
+  if len(sys.argv) < 5:
+    print "  $ python affix_python_tcp_benchmark.py packet_block_size(in KB) total_data_to_send(in MB) listening_port connecting_port affix_string"
     sys.exit(1)
 
   # Extract the user input to figure out what the block size will be 
   # and how much data to send in total.
-  block_multiplier = int(sys.argv[1])
+  block_size = int(sys.argv[1])
   data_length = int(sys.argv[2]) * 1024 * 1024
+  listening_port = int(sys.argv[3])
+  connecting_port = int(sys.argv[4])
+  affix_string = str(sys.argv[5])
 
-  repeat_data = random_string * block_multiplier
-  block_size = block_size * block_multiplier
+  repeat_data = random_string * block_size
   
   total_sent = 0
 
@@ -128,7 +139,7 @@ def main():
   # the connection, send data repeatedly until we have sent
   # sufficient ammount.
   affix_obj = AffixStackInterface(affix_string)
-  sockobj = affix_obj.openconnection(server_address, port, server_address, port + 1, 10)
+  sockobj = affix_obj.openconnection(server_address, connecting_port, server_address, connecting_port + 10, 10)
 
   start_time = time.time()
   while total_sent < data_length:
@@ -137,7 +148,14 @@ def main():
     except SocketWouldBlockError:
       time.sleep(sleep_time)
   # Send a signal telling the server we are done sending data.
-  sockobj.send(FIN_TAG)
+
+  while True:
+    try:
+      sockobj.send(FIN_TAG)
+      break
+    except SocketWouldBlockError:
+      time.sleep(sleep_time)
+
   sockobj.close()
   
 
