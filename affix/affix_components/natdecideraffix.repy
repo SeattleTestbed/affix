@@ -1,0 +1,121 @@
+#!python
+"""
+<Program>
+  natdecideraffix.repy
+
+<Author>
+  Monzur Muhammad
+  monzum@cs.washington.edu
+
+<Started>
+  2/1/2014
+
+<Purpose>
+  The purpose of the NAT decider Affix
+  is to determine if the current node is
+  behind a NAT or not. If the node is 
+  behind NAT, then the NatDeciderAffix
+  will load the NatPunchAffix before
+  opening up a listening socket.
+"""
+
+
+dy_import_module_symbols("affix_exceptions")
+
+
+class NatDeciderAffix(BaseAffix):
+  """
+  This is a class that decides whether the node is behind a NAT
+  by checking if the localip falls in the private IP address
+  category. If the node is behind NAT, the Affix will insert
+  the NatPunchAffix.
+  """
+
+  def listenforconnection(self, localip, localport):
+    """
+    <Purpose>
+      Opens up a listening socket. Adds in NatPunchAffix if
+      necessary.
+
+    <Arguments>
+      Same as Repy V2 API.
+
+    <Exceptions>
+      None
+
+    <Side Effects>
+      Modifies the Affix stack.
+
+    <Return>
+      A listening socket.
+    """
+
+    # If node is behind a NAT then we add in the NatPunchAffix
+    # to the stack. If we are unable to load it, we just move
+    # on.
+    try:
+      enable_nat = self._is_node_behind_nat(gethostbyname(localip)) 
+    except NetworkAddressError:
+      enable_nat = False
+      
+    # Add in the NatPunchAffix if we are behind Nat.
+    # If we are unable to either register, create the NatPunchAffix
+    # or are unable to push the NatPunchAffix onto the stack, we
+    # just move on and not use the NatPunchAffix.
+    if enable_nat:
+      try:
+        find_and_register_affix("NatPunchAffix")
+        nat_affix = create_affix_object("NatPunchAffix", [], None)
+        
+        # Now we push the new NatPunchAffix onto our stack.
+        self.push(nat_affix)
+      except AffixNotFoundError:
+        pass
+      except AffixStackError:
+        pass
+      
+
+    tcpserversocket = self.peek().listenforconnection(localip, localport)
+    return AffixTCPServerSocket(tcpserversocket, self)
+
+
+
+
+  def _is_node_behind_nat(self, ipaddr):
+    """
+    <Purpose>
+      Check to see if the provided ip address is a private
+      IP address.
+    """
+
+    # Check if address is in the 10.x.x.x category.
+    if ipaddr.startswith('10'):
+      return True
+
+    # Check if address is in the 192.168.x.x category.
+    if ipaddr.startswith('192.168'):
+      return True
+
+    # Check if address is in the 172.16.x.x - 172.31.x.x category.
+    if ipaddr.startswith('172'):
+      second_octet = int(ipaddr.split('.')[1])
+
+      if second_octet >= 16 and second_octet <= 31:
+        return True
+      
+    # If the address is not a private address. We return false.
+    return False
+  
+ 
+
+  def copy(self):
+    if self.affix_context['next_affix']:
+      next_affix_copy = self.affix_context['next_affix'].copy()
+    else:
+      next_affix_copy = None
+    return NatDeciderAffix(next_affix_copy, self.affix_context['optional_args'])
+
+
+  def get_advertisement_string(self):
+    # This is a transparent Affix, so we don't advertise ourself.
+    return self.peek().get_advertisement_string()
