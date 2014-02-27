@@ -16,16 +16,20 @@
   1st June 2011
 """
 
+import traceback
 
 dy_import_module_symbols("random")
 dy_import_module_symbols("session")
+dy_import_module_symbols("sockettimeout")
 dy_import_module_symbols("advertise_objects")
 dy_import_module_symbols("nat_forwarder_common_lib")
 
 
 # The default timeout that is used when connecting to forwarder
 # when doing listenforconnection.
-_NAT_AFFIX_DEFAULT_TIMEOUT = 30
+_NAT_AFFIX_DEFAULT_TIMEOUT = 10
+
+_NAT_SOCKET_TIMEOUT = 5
 
 # The affix string to use to connect to Nat Forwarder.
 _NAT_AFFIX_STRING = "(CoordinationAffix)"
@@ -147,17 +151,13 @@ class NatPunchAffix(BaseAffix):
 
     affix_stack_object = AffixStackInterface(_NAT_AFFIX_STRING)
     sockobj = affix_stack_object.openconnection(forwarder_ip, forwarder_port, localip, localport, timeout)
-    if _NAT_AFFIX_DEBUG_MODE:
-      log("Connected properly.\n")
 
     # Let the forwarder know which server we want to connect to.
     server_id = "%s:%d" % (destip, destport)
     session_sendmessage(sockobj, "%s,%s" % (CONNECT_CLIENT_TAG, server_id)) 
-    if _NAT_AFFIX_DEBUG_MODE:
-      log("Sent connection tag.\n")
+ 
     confirmation_msg = session_recvmessage(sockobj)
-    if _NAT_AFFIX_DEBUG_MODE:
-      log("received confirmation tag\n")
+ 
     # NOTE: We need to incorporate the timeout value in here somehow. 
     
     # If the forwarder confirms that we have successfully connected, then we 
@@ -204,6 +204,8 @@ class NatPunchAffix(BaseAffix):
     except (RepyArgumentError, AddressBindingError), err:
       # If we get these two arguments we want to raise them as AddressBindingError.
       raise AddressBindingError(err)
+    except SocketClosedRemote, err:
+      raise DuplicateTupleError(err)
 
     # Raise AddressBindingError if we are unable to connect to any forwarder.
     if not connection_socket:
@@ -323,14 +325,29 @@ class NatPunchAffix(BaseAffix):
     
     # Connect to the forwarder.
     affix_stack_object = AffixStackInterface(_NAT_AFFIX_STRING)
-    new_sockobj = affix_stack_object.openconnection(forwarder_ip, forwarder_port, getmyip(), random_localport, _NAT_AFFIX_DEFAULT_TIMEOUT)
-        
+
+    try:
+      new_sockobj = affix_stack_object.openconnection(forwarder_ip, forwarder_port, getmyip(), random_localport, _NAT_AFFIX_DEFAULT_TIMEOUT)
+    except (AddressBindingError, DuplicateTupleError, AlreadyListeningError, 
+            CleanupInProgressError, ConnectionRefusedError, TimeoutError), err:
+      # No matter what error is raised by openconnection, we need to translate
+      # it to a SocketWouldBlockError because this is for a getconnection() call.
+      raise SocketWouldBlockError("Unable to connect to a client currently. " + str(err))
+
+    # Use a sockettimeout object in order to perform socket.send and socket.recv
+    # so we don't hang forever and continue on if it takes too long.
+    timeout_socket = _timeout_socket(new_sockobj, timeout=_NAT_SOCKET_TIMEOUT)
+
     # Request the Nat Forwarder to connect a client to this new socket that
     # we just opened up. Then we check if we were successfully connected to
     # a client
-    session_sendmessage(new_sockobj, CONNECT_SERVER_TAG + ',' + server_id)
-    response = session_recvmessage(new_sockobj)
-        
+    try:
+      session_sendmessage(timeout_socket, CONNECT_SERVER_TAG + ',' + server_id)
+      response = session_recvmessage(timeout_socket)
+    except SocketTimeoutError, err:
+      raise SocketWouldBlockError("Unable to connect to any client due to timeout when " +
+                                  "requesting for connection for server id: %s. %s" % (server_id, str(err)))
+
     # We successfully made a connection! So we return the socket along with
     # the ip address and port of the client.
     if response.startswith(CONNECT_SUCCESS):
@@ -340,7 +357,7 @@ class NatPunchAffix(BaseAffix):
           
       # Everything was a success!
       return (client_ip, client_port, new_sockobj)
-    elif response.starts:
+    elif response.startswith(CONNECT_FAIL):
       raise SocketWouldBlockError("Unable to connect to any client currently.")
           
           
@@ -375,7 +392,10 @@ class NatPunchAffix(BaseAffix):
       forwarder_list = [self.default_forwarder[0] + ':' + str(self.default_forwarder[1])]
     else:
       try:
-        forwarder_list = self.forwarder_cache.lookup(NAT_FORWARDER_KEY, graceperiod=5, timeout=15)
+        forwarder_list = self.forwarder_cache.lookup(NAT_FORWARDER_KEY, graceperiod=5, timeout=10)
+        # We will randomize the forwarder list to try and distribute servers
+        # across all the forwarders.
+        forwarder_list = random_sample(forwarder_list, len(forwarder_list))
       except AdvertiseError:
         return None
 
@@ -398,30 +418,60 @@ class NatPunchAffix(BaseAffix):
         sockobj = affix_stack_object.openconnection(forwarder_ip, forwarder_port, localip, localport, _NAT_AFFIX_DEFAULT_TIMEOUT)
       # MMM: Should we also catch RepyArgumentError and AddressbindingError here? Currently we raise those.
       except (DuplicateTupleError, AlreadyListeningError, CleanupInProgressError, 
-              ConnectionRefusedError, TimeoutError, InternetConnectivityError):
+              ConnectionRefusedError, TimeoutError, InternetConnectivityError), err:
+        if _NAT_AFFIX_DEBUG_MODE:
+          log("Unable to connect to forwarder '%s:%d'. Error: %s\n" % (forwarder_ip, forwarder_port, str(err)))
         continue
+      except Exception, err:
+        if _NAT_AFFIX_DEBUG_MODE:
+          log("NatPunchAffix found unexpected error: %s\n. Local Address is: '%s:%d'. %s" % (str(err), localip, localport, str(traceback.format_exc())))
+        raise
       else:
-        # Once we are connected, 
-        session_sendmessage(sockobj, SERVER_REGISTER + ',' + str(server_id))
-            
-        # Make sure we are connected to the forwarder. We do this by sending
-        # the forwarder the unique ID for this particular connection. If the
-        # server returns a confirmation msg then we are connected and we can
-        # return the socket object. It is possible that the forwarder will 
-        # return other messages such as SERVER_FULL or CONNECTION_REFUSED msg.
-        # In which case we move on to the next forwarder.
-        confirmation_msg = session_recvmessage(sockobj)
-        if confirmation_msg == CONNECT_SUCCESS:
-          if not self.default_forwarder:
-            if _NAT_AFFIX_DEBUG_MODE:
-              log("Setting the default forwarder\n")
-            self.default_forwarder.append(forwarder_ip)
-            self.default_forwarder.append(forwarder_port)
+        try:
+          # This is the initial message that we send to the NAT forwarder
+          # once we have connected and want to register the server with the
+          # forwarder.
+          register_serv_msg = SERVER_REGISTER + ',' + str(server_id)
 
           if _NAT_AFFIX_DEBUG_MODE:
-            log("Connected to forwarder, returning. Default forwarder is: " + str(self.default_forwarder) + "\n")
-          return sockobj
-        else:
+            log("NatPunchAffix successfully connected to forwarder '%s:%d'\n" % (forwarder_ip, forwarder_port))
+            log("NatPunchAffix requesting to register with msg: %s\n" % register_serv_msg)
+          # Once we are connected, 
+
+          # Use a sockettimeout object in order to perform socket.send and socket.recv
+          # so we don't hang forever and continue on if it takes too long.
+          timeout_socket = _timeout_socket(sockobj, timeout=_NAT_SOCKET_TIMEOUT)
+
+          try:
+            session_sendmessage(timeout_socket, register_serv_msg)
+            
+            # Make sure we are connected to the forwarder. We do this by sending
+            # the forwarder the unique ID for this particular connection. If the
+            # server returns a confirmation msg then we are connected and we can
+            # return the socket object. It is possible that the forwarder will 
+            # return other messages such as SERVER_FULL or CONNECTION_REFUSED msg.
+            # In which case we move on to the next forwarder.
+            confirmation_msg = session_recvmessage(timeout_socket)
+          except SocketTimeoutError, err:
+            if _NAT_AFFIX_DEBUG_MODE:
+              log("NatPunchAffix timed out while registering to forwarder '%s:%d'. %s\n" % (forwarder_ip, forwarder_port, str(err)))
+            # If we timeout trying to register to a NAT forwarder, we continue
+            # and move on to the next forwarder.
+            continue
+
+          if confirmation_msg == CONNECT_SUCCESS:
+            if not self.default_forwarder:
+              self.default_forwarder.append(forwarder_ip)
+              self.default_forwarder.append(forwarder_port)
+
+            if _NAT_AFFIX_DEBUG_MODE:
+              log("Connected to forwarder, returning. Default forwarder is: " + str(self.default_forwarder) + "\n")
+            return sockobj
+          else:
+            if _NAT_AFFIX_DEBUG_MODE:
+              log("NAT Forwarder refused connection. Return msg: %s\n" % confirmation_msg)
+            continue
+        except SocketClosedRemote:
           continue
     # If we have exhausted all the forwarders in the forwarder list then we
     # return None.
@@ -460,8 +510,11 @@ class NatPunchAffix(BaseAffix):
     """
     Make a copy of self.
     """
+    if self.affix_context['next_affix']:
+      affix_stack_copy = self.affix_context['next_affix'].copy()
+    else:
+      affix_stack_copy = None
 
-    affix_stack_copy = self.affix_context['affix_stack'].deepcopy()
     optional_args_copy = self.affix_context['optional_args']
 
     affix_copy = NatPunchAffix(affix_stack_copy, optional_args_copy)
@@ -481,8 +534,6 @@ class NatPunchAffix(BaseAffix):
     if _NAT_AFFIX_DEBUG_MODE:
       log("Default forwarder is: " + str(self.default_forwarder) + "\n")
     if self.default_forwarder:
-      if _NAT_AFFIX_DEBUG_MODE:
-        log("Going to advertise forwarder ip:port\n")
       forwarder_ip, forwarder_port = self.default_forwarder
       nat_ad_string = "(NatPunchAffix,%s:%d)" % (forwarder_ip, forwarder_port)
     else:
