@@ -20,8 +20,10 @@ import traceback
 
 dy_import_module_symbols("random")
 dy_import_module_symbols("session")
+dy_import_module_symbols("baseaffix")
 dy_import_module_symbols("sockettimeout")
 dy_import_module_symbols("advertise_objects")
+dy_import_module_symbols("affixstackinterface")
 dy_import_module_symbols("nat_forwarder_common_lib")
 
 
@@ -29,6 +31,7 @@ dy_import_module_symbols("nat_forwarder_common_lib")
 # when doing listenforconnection.
 _NAT_AFFIX_DEFAULT_TIMEOUT = 10
 
+# A timeout value for all send()/recv() calls.
 _NAT_SOCKET_TIMEOUT = 5
 
 # The affix string to use to connect to Nat Forwarder.
@@ -396,7 +399,7 @@ class NatPunchAffix(BaseAffix):
         # We will randomize the forwarder list to try and distribute servers
         # across all the forwarders.
         forwarder_list = random_sample(forwarder_list, len(forwarder_list))
-      except AdvertiseError:
+      except (AdvertiseError, TimeoutError):
         return None
 
 

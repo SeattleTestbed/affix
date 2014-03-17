@@ -190,7 +190,7 @@ class BaseAffix:
     # next layer is the RepyNetworkApiWrapper, then we
     # return as we don't need to pop anything.
     if isinstance(next_affix, RepyNetworkApiWrapper):
-      return
+      raise AffixStackError("The stack is empty. We cannot pop() anymore Affixes.")
 
     next_next_affix = next_affix.peek()
     self.affix_context['next_affix'] = next_next_affix
