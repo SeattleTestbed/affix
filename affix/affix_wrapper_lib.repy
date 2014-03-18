@@ -156,12 +156,12 @@ class RepyNetworkApiWrapper:
     try:
       destip = gethostbyname(destip)
     except NetworkAddressError:
-      raise AddressBindingError('Unable to resolve ' + destip)
+      raise RepyArgumentError("Unable to resolve destip '%s'" % destip)
 
     try:
       localip = gethostbyname(localip)
     except NetworkAddressError:
-      raise AddressBindingError('Unable to resolve ' + localip)
+      raise RepyArgumentError("Unable to resolve localip '%s'" % localip)
 
     return sendmessage(destip, destport, message, localip, localport)
 
@@ -173,7 +173,7 @@ class RepyNetworkApiWrapper:
     try:
       localip = gethostbyname(localip)
     except NetworkAddressError:
-      raise AddressBindingError('Unable to resolve ' + localip)
+      raise RepyArgumentError("Unable to resolve localip '%s'" % localip)
     return listenformessage(localip, localport)
 
 
@@ -186,12 +186,12 @@ class RepyNetworkApiWrapper:
     try:
       destip = gethostbyname(destip)
     except NetworkAddressError:
-      raise ConnectionRefusedError('Unable to resolve ' + destip)
+      raise RepyArgumentError("Unable to resolve destip '%s'" % destip)
 
     try:
       localip = gethostbyname(localip)
     except NetworkAddressError:
-      raise AddressBindingError('Unable to resolve ' + destip)
+      raise RepyArgumentError("Unable to resolve localip '%s'" % localip)
 
 
     if DEBUG_MODE:
@@ -208,7 +208,7 @@ class RepyNetworkApiWrapper:
     try:
       localip = gethostbyname(localip)
     except NetworkAddressError:
-      raise AddressBindingError('Unable to resolve ' + localip)
+      raise RepyArgumentErrorError("Unable to resolve localip '%s'" % localip)
 
     if DEBUG_MODE:
       log("[Netcall:listenforconnection] Localip: %s, Localport: %d\n" % (localip, localport))
