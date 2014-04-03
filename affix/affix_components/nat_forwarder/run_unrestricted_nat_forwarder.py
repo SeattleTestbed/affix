@@ -530,7 +530,7 @@ if __name__ == '__main__':
 """NOTE WELL: You are trying to run a NAT forwarder on a private IP address. 
 This leaves the forwarder uncontactable from the public Internet unless 
 you set up port forwarding etc. on your NAT gateway. I'll let you proceed 
-regardless. You hopefully know what you do.""", ERROR_MSG)
+regardless. You hopefully know what you do.""", ERR_MSG)
   
   # Launch the TCP Forwarder.
   logmsg("Creating forwarder thread on " + myip + ":" + str(myport), INFO_MSG)
