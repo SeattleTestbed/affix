@@ -532,4 +532,4 @@ if __name__ == '__main__':
   advertise_value = myip + ':' + myport 
   logmsg("Starting advertise thread for " + NAT_FORWARDER_KEY + 
     ": " + advertise_value, INFO_MSG)
-  advertisepipe.add_to_pipe(NAT_FORWARDER_KEY, advertise_val)
+  advertisepipe.add_to_pipe(NAT_FORWARDER_KEY, advertise_value)
