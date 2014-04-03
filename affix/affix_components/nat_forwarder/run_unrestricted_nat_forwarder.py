@@ -101,7 +101,8 @@ def tcp_forwarder_listener():
         # This is the case where a new server wants to register to this
         # NAT Forwarder.
         createthread(register_new_server(remote_ip, remote_port, conn_id, sockobj))
-        logmsg("Registered server.", DEBUG_MSG)
+        logmsg("Registered server " + remote_ip + ":" + str(remote_port), 
+          DEBUG_MSG)
       elif conn_type == CONNECT_SERVER_TAG:
         # This is the case when a registered server opens up a connection to
         # the forwarder in order for it to be connected to a client.
@@ -469,8 +470,8 @@ def launch_server_communication_thread(sockobj, server_id):
       except (SocketClosedRemote, SocketClosedLocal, SessionEOF), err:
         break
       except Exception, err:
-        logmsg("Unexpected error in launch_server_communication_thread:", 
-          str(type(err)), str(err), ERR_MSG)
+        logmsg("Unexpected error in launch_server_communication_thread: " + 
+          str(type(err)) + " " + str(err), ERR_MSG)
         break
 
     sockobj.close()
@@ -510,7 +511,7 @@ def logmsg(message, msg_type):
 # Program Entry
 # ====================================================
 if __name__ == '__main__':
-  print "Starting unrestricted NAT forwarder."
+  logmsg("Starting unrestricted NAT forwarder.", INFO_MSG)
 
   if len(sys.argv) < 2:
     print "Usage:\n\tpython run_unrestricted_nat_forwarder.py TCP_PORT [NAT_AFFIX_STRING]"
@@ -524,10 +525,11 @@ if __name__ == '__main__':
   myip, myport = getmyip(), str(mycontext['listenport_tcp']) 
   
   # Launch the TCP Forwarder.
-  logmsg("Creating forwarder thread on " + myip + ":" + str(myport))
+  logmsg("Creating forwarder thread on " + myip + ":" + str(myport), INFO_MSG)
   createthread(tcp_forwarder_listener)
   
   # Launch advertiser and advertise this forwarders ip address, tcp port.
   advertise_value = myip + ':' + myport 
-  logmsg("Starting advertise thread for", NAT_FORWARDER_KEY, advertise_value)
+  logmsg("Starting advertise thread for " + NAT_FORWARDER_KEY + 
+    ": " + advertise_value, INFO_MSG)
   advertisepipe.add_to_pipe(NAT_FORWARDER_KEY, advertise_val)
