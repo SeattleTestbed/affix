@@ -78,18 +78,22 @@ def tcp_forwarder_listener():
 
   while True:
     try:
-	  # Try to see if there is any connection waiting.
+      # Try to see if there is any connection waiting.
       remote_ip, remote_port, sockobj = tcp_forwarder_sock.getconnection()
     except SocketWouldBlockError:
       sleep(SLEEP_TIME)
     except Exception, err:
       logmsg("Error in getconnection: " + str(err), DEBUG_MSG)
     else:
+      logmsg("Got connection from " + str(remote_ip) + ":" + str(remote_port), DEBUG_MSG)
       try:
         conn_init_message = session_recvmessage(sockobj)
+        logmsg(str(remote_ip) + ":" + str(remote_port) + " said " + 
+          conn_init_message, DEBUG_MSG)
         (conn_type, conn_id) = conn_init_message.split(',')
       except Exception, err:
-        logmsg("Error in connection establishment: " + str(err), DEBUG_MSG)
+        logmsg("Error in connection establishment: " + 
+          str(type(err)) + " " + str(err), DEBUG_MSG)
         sockobj.close()
         continue
     
@@ -97,6 +101,7 @@ def tcp_forwarder_listener():
         # This is the case where a new server wants to register to this
         # NAT Forwarder.
         createthread(register_new_server(remote_ip, remote_port, conn_id, sockobj))
+        logmsg("Registered server.", DEBUG_MSG)
       elif conn_type == CONNECT_SERVER_TAG:
         # This is the case when a registered server opens up a connection to
         # the forwarder in order for it to be connected to a client.
@@ -505,9 +510,11 @@ def logmsg(message, msg_type):
 # Program Entry
 # ====================================================
 if __name__ == '__main__':
+  print "Starting unrestricted NAT forwarder."
 
   if len(sys.argv) < 2:
-    raise Exception("Usage:\n\tpython run_unrestricted_nat_forwarder.py TCP_PORT [NAT_AFFIX_STRING]")
+    print "Usage:\n\tpython run_unrestricted_nat_forwarder.py TCP_PORT [NAT_AFFIX_STRING]"
+    sys.exit(1)
 
   mycontext['listenport_tcp'] = int(sys.argv[1])
 
