@@ -25,7 +25,7 @@ add_dy_support(locals())
 import sys
 
 dy_import_module_symbols("session")
-dy_import_module_symbols("advertise_objects")
+advertisepipe = dy_import_module("advertisepipe.r2py")
 dy_import_module_symbols("affixstackinterface")
 dy_import_module_symbols("nat_forwarder_common_lib")
 
@@ -518,6 +518,5 @@ if __name__ == '__main__':
   createthread(tcp_forwarder_listener)
   
   # Launch advertiser and advertise this forwarders ip address, tcp port.
-  advertise_object = AdvertisePipe()
   advertise_val = getmyip() + ':' +  str(mycontext['listenport_tcp']) 
-  advertise_object.add(NAT_FORWARDER_KEY, advertise_val)
+  advertisepipe.add_to_pipe(NAT_FORWARDER_KEY, advertise_val)
