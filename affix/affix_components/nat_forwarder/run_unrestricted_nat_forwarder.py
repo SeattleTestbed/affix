@@ -28,6 +28,7 @@ dy_import_module_symbols("session")
 advertisepipe = dy_import_module("advertisepipe.r2py")
 dy_import_module_symbols("affixstackinterface")
 dy_import_module_symbols("nat_forwarder_common_lib")
+iplib = dy_import_module("natdecideraffix.repy")
 
 # The affix string that the NAT Forwarder will use.
 NAT_AFFIX_STRING = "(CoordinationAffix)(NoopAffix)"
@@ -522,7 +523,14 @@ if __name__ == '__main__':
   if len(sys.argv) >= 3:
     NAT_AFFIX_STRING = sys.argv[2]
 
-  myip, myport = getmyip(), str(mycontext['listenport_tcp']) 
+  myip, myport = getmyip(), str(mycontext['listenport_tcp'])
+
+  if iplib.is_private_ipv4_address(getmyip()):
+    logmsg(
+"""NOTE WELL: You are trying to run a NAT forwarder on a private IP address. 
+This leaves the forwarder uncontactable from the public Internet unless 
+you set up port forwarding etc. on your NAT gateway. I'll let you proceed 
+regardless. You hopefully know what you do.""", ERROR_MSG)
   
   # Launch the TCP Forwarder.
   logmsg("Creating forwarder thread on " + myip + ":" + str(myport), INFO_MSG)
