@@ -3,7 +3,7 @@
 <Program Name>
   nat_forwarder.repy
 
-<Purpose>u
+<Purpose>
   The purpose of this program is to act as a nat forwarder.
   Messages from nodeA to nodeB could be forwarded through
   this forwarder.
@@ -20,31 +20,62 @@
 """
 
 dy_import_module_symbols("session")
-dy_import_module_symbols("advertise_objects")
+advertisepipe = dy_import_module("advertisepipe.r2py")
 dy_import_module_symbols("affixstackinterface")
 dy_import_module_symbols("nat_forwarder_common_lib")
+iplib = dy_import_module("natdecideraffix.repy")
 
 # The affix string that the NAT Forwarder will use.
 NAT_AFFIX_STRING = "(CoordinationAffix)(NoopAffix)"
 
+
 # Time to sleep if socket is blocking.
 SLEEP_TIME = 0.001
 
+
+
 # How many bytes should be received at once.
-RECV_BYTES = 2**10
+# This shouldn't be larger than the network rate restrictions.
+# (Actually, it should be at most the rate divided by the number 
+# of currently active clients. Otherwise, high delays can result 
+# as one client blocks all of the others for a second, then the 
+# next blocks the other ones, etc.).
+# A meaningful minimum even in the multiple-clients case is probably 
+# the MSS (Maximum Segment Size, # <1500 Bytes). This is the usual 
+# full-size packet to expect. Making it smaller will split the 
+# segments in transit. This does not break the connection, but 
+# increases overhead.
+
+RECV_BYTES = min(getresources()[0]['netrecv'], getresources()[0]['netsend'])
+
+
 
 # Some variables determining how many servers
 # and clients can connect at once to the forwarder.
+# A server is a node that uses us as the "listening proxy".
+# A client is a node that connects to that node through us.
 # Note that for each client that connects to a server,
 # two new threads is started.
-MAX_SERVERS = 5
-MAX_CLIENTS_PER_SERVER = 5
+# Our resources are limited by the number of available threads, 
+# number of threads < 2 * MAX_SERVERS * MAX_CLIENTS_PER_SERVER + some buffer.
+# While our primary use case is NAT forwarding on behalf of the 
+# nodemanager, I consider supporting a larger number of servers more 
+# important than very many parallel incoming connections per server. 
+# I will provide at least one server slot.
+# YMMV. Override these values for your use case!
+
+buffer = 4   # main and advertise thread, and two spares
+available_threads = getresources()[0]['events'] - buffer
+MAX_CLIENTS_PER_SERVER = 2
+MAX_SERVERS = max(1, int(available_threads/2/MAX_CLIENTS_PER_SERVER))
+
 
 
 # Message log types
 INFO_MSG = 1
 ERR_MSG = 2
 DEBUG_MSG = 3
+
 
 
 # A dictionary keeps track of all the servers that are registered
@@ -73,18 +104,22 @@ def tcp_forwarder_listener():
 
   while True:
     try:
-	  # Try to see if there is any connection waiting.
+      # Try to see if there is any connection waiting.
       remote_ip, remote_port, sockobj = tcp_forwarder_sock.getconnection()
     except SocketWouldBlockError:
       sleep(SLEEP_TIME)
     except Exception, err:
       logmsg("Error in getconnection: " + str(err), DEBUG_MSG)
     else:
+      logmsg("Got connection from " + str(remote_ip) + ":" + str(remote_port), DEBUG_MSG)
       try:
         conn_init_message = session_recvmessage(sockobj)
+        logmsg(str(remote_ip) + ":" + str(remote_port) + " said " + 
+          conn_init_message, DEBUG_MSG)
         (conn_type, conn_id) = conn_init_message.split(',')
       except Exception, err:
-        logmsg("Error in connection establishment: " + str(err), DEBUG_MSG)
+        logmsg("Error in connection establishment: " + 
+          str(type(err)) + " " + str(err), DEBUG_MSG)
         sockobj.close()
         continue
     
@@ -92,6 +127,8 @@ def tcp_forwarder_listener():
         # This is the case where a new server wants to register to this
         # NAT Forwarder.
         createthread(register_new_server(remote_ip, remote_port, conn_id, sockobj))
+        logmsg("Registered server " + remote_ip + ":" + str(remote_port), 
+          DEBUG_MSG)
       elif conn_type == CONNECT_SERVER_TAG:
         # This is the case when a registered server opens up a connection to
         # the forwarder in order for it to be connected to a client.
@@ -459,8 +496,8 @@ def launch_server_communication_thread(sockobj, server_id):
       except (SocketClosedRemote, SocketClosedLocal, SessionEOF), err:
         break
       except Exception, err:
-        logmsg("Unexpected error occured in launch_server_communication_thread: %s" %
-                str(err), ERR_MSG)
+        logmsg("Unexpected error in launch_server_communication_thread: " + 
+          str(type(err)) + " " + str(err), ERR_MSG)
         break
 
     sockobj.close()
@@ -500,19 +537,33 @@ def logmsg(message, msg_type):
 # Program Entry
 # ====================================================
 if callfunc == 'initialize':
+  logmsg("Starting unrestricted NAT forwarder.", INFO_MSG)
 
   if len(callargs) < 1:
-    raise Exception("Usage:\n\tpython repy.py RESTRICTION_FILE nat_forwarder.repy TCP_PORT [NAT_AFFIX_STRING]")
+    log("Usage:\n\tpython run_unrestricted_nat_forwarder.py TCP_PORT [NAT_AFFIX_STRING]")
+    exitall()
 
   mycontext['listenport_tcp'] = int(callargs[0])
 
   if len(callargs) >= 2:
     NAT_AFFIX_STRING = callargs[1]
   
+  myip, myport = getmyip(), str(mycontext['listenport_tcp'])
+
+  if iplib.is_private_ipv4_address(getmyip()):
+    logmsg(
+"""NOTE WELL: You are trying to run a NAT forwarder on a private IP address. 
+This leaves the forwarder uncontactable from the public Internet unless 
+you set up port forwarding etc. on your NAT gateway. I'll let you proceed 
+regardless. You hopefully know what you do.""", ERR_MSG)
+  
   # Launch the TCP Forwarder.
+  logmsg("Creating forwarder thread on " + myip + ":" + str(myport), INFO_MSG)
   createthread(tcp_forwarder_listener)
   
   # Launch advertiser and advertise this forwarders ip address, tcp port.
-  advertise_object = AdvertisePipe()
-  advertise_val = getmyip() + ':' +  str(mycontext['listenport_tcp']) 
-  advertise_object.add(NAT_FORWARDER_KEY, advertise_val)
+  advertise_value = myip + ':' + myport 
+  logmsg("Starting advertise thread for " + NAT_FORWARDER_KEY + 
+    ": " + advertise_value, INFO_MSG)
+  advertisepipe.add_to_pipe(NAT_FORWARDER_KEY, advertise_value)
+

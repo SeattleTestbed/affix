@@ -25,9 +25,10 @@ add_dy_support(locals())
 import sys
 
 dy_import_module_symbols("session")
-dy_import_module_symbols("advertise_objects")
+advertisepipe = dy_import_module("advertisepipe.r2py")
 dy_import_module_symbols("affixstackinterface")
 dy_import_module_symbols("nat_forwarder_common_lib")
+iplib = dy_import_module("natdecideraffix.repy")
 
 # The affix string that the NAT Forwarder will use.
 NAT_AFFIX_STRING = "(CoordinationAffix)(NoopAffix)"
@@ -86,11 +87,15 @@ def tcp_forwarder_listener():
     except Exception, err:
       logmsg("Error in getconnection: " + str(err), DEBUG_MSG)
     else:
+      logmsg("Got connection from " + str(remote_ip) + ":" + str(remote_port), DEBUG_MSG)
       try:
         conn_init_message = session_recvmessage(sockobj)
+        logmsg(str(remote_ip) + ":" + str(remote_port) + " said " + 
+          conn_init_message, DEBUG_MSG)
         (conn_type, conn_id) = conn_init_message.split(',')
       except Exception, err:
-        logmsg("Error in connection establishment: " + str(err), DEBUG_MSG)
+        logmsg("Error in connection establishment: " + 
+          str(type(err)) + " " + str(err), DEBUG_MSG)
         sockobj.close()
         continue
     
@@ -98,6 +103,8 @@ def tcp_forwarder_listener():
         # This is the case where a new server wants to register to this
         # NAT Forwarder.
         createthread(register_new_server(remote_ip, remote_port, conn_id, sockobj))
+        logmsg("Registered server " + remote_ip + ":" + str(remote_port), 
+          DEBUG_MSG)
       elif conn_type == CONNECT_SERVER_TAG:
         # This is the case when a registered server opens up a connection to
         # the forwarder in order for it to be connected to a client.
@@ -482,8 +489,8 @@ def launch_server_communication_thread(sockobj, server_id):
       except (SocketClosedRemote, SocketClosedLocal, SessionEOF), err:
         break
       except Exception, err:
-        logmsg("Unexpected error occured in launch_server_communication_thread: %s" %
-                str(err), ERR_MSG)
+        logmsg("Unexpected error in launch_server_communication_thread: " + 
+          str(type(err)) + " " + str(err), ERR_MSG)
         break
 
     sockobj.close()
@@ -540,6 +547,7 @@ def logmsg(message, msg_type):
 # Program Entry
 # ====================================================
 if __name__ == '__main__':
+  logmsg("Starting unrestricted NAT forwarder.", INFO_MSG)
 
   if len(sys.argv) < 2:
     print "Usage:\n\tpython run_unrestricted_nat_forwarder.py TCP_PORT [NAT_AFFIX_STRING]"
@@ -549,11 +557,22 @@ if __name__ == '__main__':
 
   if len(sys.argv) >= 3:
     NAT_AFFIX_STRING = sys.argv[2]
+
+  myip, myport = getmyip(), str(mycontext['listenport_tcp'])
+
+  if iplib.is_private_ipv4_address(getmyip()):
+    logmsg(
+"""NOTE WELL: You are trying to run a NAT forwarder on a private IP address. 
+This leaves the forwarder uncontactable from the public Internet unless 
+you set up port forwarding etc. on your NAT gateway. I'll let you proceed 
+regardless. You hopefully know what you do.""", ERR_MSG)
   
   # Launch the TCP Forwarder.
+  logmsg("Creating forwarder thread on " + myip + ":" + str(myport), INFO_MSG)
   createthread(tcp_forwarder_listener)
   
   # Launch advertiser and advertise this forwarders ip address, tcp port.
-  advertise_object = AdvertisePipe()
-  advertise_val = getmyip() + ':' +  str(mycontext['listenport_tcp']) 
-  advertise_object.add(NAT_FORWARDER_KEY, advertise_val)
+  advertise_value = myip + ':' + myport 
+  logmsg("Starting advertise thread for " + NAT_FORWARDER_KEY + 
+    ": " + advertise_value, INFO_MSG)
+  advertisepipe.add_to_pipe(NAT_FORWARDER_KEY, advertise_value)
