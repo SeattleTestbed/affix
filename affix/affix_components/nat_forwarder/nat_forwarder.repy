@@ -28,24 +28,54 @@ iplib = dy_import_module("natdecideraffix.repy")
 # The affix string that the NAT Forwarder will use.
 NAT_AFFIX_STRING = "(CoordinationAffix)(NoopAffix)"
 
+
 # Time to sleep if socket is blocking.
 SLEEP_TIME = 0.001
 
+
+
 # How many bytes should be received at once.
-RECV_BYTES = 2**10
+# This shouldn't be larger than the network rate restrictions.
+# (Actually, it should be at most the rate divided by the number 
+# of currently active clients. Otherwise, high delays can result 
+# as one client blocks all of the others for a second, then the 
+# next blocks the other ones, etc.).
+# A meaningful minimum even in the multiple-clients case is probably 
+# the MSS (Maximum Segment Size, # <1500 Bytes). This is the usual 
+# full-size packet to expect. Making it smaller will split the 
+# segments in transit. This does not break the connection, but 
+# increases overhead.
+
+RECV_BYTES = min(getresources()[0]['netrecv'], getresources()[0]['netsend'])
+
+
 
 # Some variables determining how many servers
 # and clients can connect at once to the forwarder.
+# A server is a node that uses us as the "listening proxy".
+# A client is a node that connects to that node through us.
 # Note that for each client that connects to a server,
 # two new threads is started.
-MAX_SERVERS = 5
-MAX_CLIENTS_PER_SERVER = 5
+# Our resources are limited by the number of available threads, 
+# number of threads < 2 * MAX_SERVERS * MAX_CLIENTS_PER_SERVER + some buffer.
+# While our primary use case is NAT forwarding on behalf of the 
+# nodemanager, I consider supporting a larger number of servers more 
+# important than very many parallel incoming connections per server. 
+# I will provide at least one server slot.
+# YMMV. Override these values for your use case!
+
+buffer = 4   # main and advertise thread, and two spares
+available_threads = getresources()[0]['events'] - buffer
+MAX_CLIENTS_PER_SERVER = 2
+MAX_SERVERS = max(1, int(available_threads/2/MAX_CLIENTS_PER_SERVER))
+
 
 
 # Message log types
 INFO_MSG = 1
 ERR_MSG = 2
 DEBUG_MSG = 3
+
 
 
 # A dictionary keeps track of all the servers that are registered
