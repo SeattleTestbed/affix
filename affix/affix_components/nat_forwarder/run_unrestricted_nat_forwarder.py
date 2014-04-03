@@ -520,10 +520,14 @@ if __name__ == '__main__':
 
   if len(sys.argv) >= 3:
     NAT_AFFIX_STRING = sys.argv[2]
+
+  myip, myport = getmyip(), str(mycontext['listenport_tcp']) 
   
   # Launch the TCP Forwarder.
+  logmsg("Creating forwarder thread on " + myip + ":" + str(myport))
   createthread(tcp_forwarder_listener)
   
   # Launch advertiser and advertise this forwarders ip address, tcp port.
-  advertise_val = getmyip() + ':' +  str(mycontext['listenport_tcp']) 
+  advertise_value = myip + ':' + myport 
+  logmsg("Starting advertise thread for", NAT_FORWARDER_KEY, advertise_value)
   advertisepipe.add_to_pipe(NAT_FORWARDER_KEY, advertise_val)
