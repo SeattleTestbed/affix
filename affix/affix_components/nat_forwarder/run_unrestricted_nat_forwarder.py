@@ -469,8 +469,8 @@ def launch_server_communication_thread(sockobj, server_id):
       except (SocketClosedRemote, SocketClosedLocal, SessionEOF), err:
         break
       except Exception, err:
-        logmsg("Unexpected error occured in launch_server_communication_thread: %s" %
-                str(err), ERR_MSG)
+        logmsg("Unexpected error in launch_server_communication_thread:", 
+          str(type(err)), str(err), ERR_MSG)
         break
 
     sockobj.close()
