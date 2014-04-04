@@ -10,8 +10,11 @@
   wrapper library that are used by the Affix framework.
 """  
 
+cachedadvertise = dy_import_module('cachedadvertise.r2py')
 
 DEBUG_MODE = False
+zenodotus_subdomain = 'zenodotus.poly.edu'
+
 
 class AffixSocketWrapper:
   """
@@ -135,7 +138,7 @@ class RepyNetworkApiWrapper:
     """
     The original repy gethostbyname call.
     """
-    return gethostbyname(name)
+    return lookup_address(name)
 
 
   def getmyip(self):
@@ -154,12 +157,12 @@ class RepyNetworkApiWrapper:
     # The destip can be a zenodotus name. We need to translate it to IP, because
     # openconnection requires the destination IP address.
     try:
-      destip = gethostbyname(destip)
+      destip = lookup_address(destip)
     except NetworkAddressError:
       raise RepyArgumentError("Unable to resolve destip '%s'" % destip)
 
     try:
-      localip = gethostbyname(localip)
+      localip = lookup_address(localip)
     except NetworkAddressError:
       raise RepyArgumentError("Unable to resolve localip '%s'" % localip)
 
@@ -171,7 +174,7 @@ class RepyNetworkApiWrapper:
     The original repy listenformessage call.
     """
     try:
-      localip = gethostbyname(localip)
+      localip = lookup_address(localip)
     except NetworkAddressError:
       raise RepyArgumentError("Unable to resolve localip '%s'" % localip)
     return listenformessage(localip, localport)
@@ -184,12 +187,12 @@ class RepyNetworkApiWrapper:
     # The destip can be a zenodotus name. We need to translate it to IP, because
     # openconnection requires the destination IP address.
     try:
-      destip = gethostbyname(destip)
+      destip = lookup_address(destip)
     except NetworkAddressError:
       raise RepyArgumentError("Unable to resolve destip '%s'" % destip)
 
     try:
-      localip = gethostbyname(localip)
+      localip = lookup_address(localip)
     except NetworkAddressError:
       raise RepyArgumentError("Unable to resolve localip '%s'" % localip)
 
@@ -206,7 +209,7 @@ class RepyNetworkApiWrapper:
     The original repy listenforconnection call.
     """
     try:
-      localip = gethostbyname(localip)
+      localip = lookup_address(localip)
     except NetworkAddressError:
       raise RepyArgumentErrorError("Unable to resolve localip '%s'" % localip)
 
@@ -298,4 +301,41 @@ class RepyNetworkApiWrapper:
 
 
 
+MAX_LOOKUP_DEPTH = 5
 
+
+
+def lookup_address(hostname, lookup_depth=0):
+  """
+  <Purpose>
+    Lookup and resolve a hostname. If the hostname
+    is a zenodotus name then we must recursively look
+    up the name. Otherwise we just do a normal gethostbyname
+    lookup and return the ip address.
+
+  <Exception>
+    May return NetworkAdderssError if unable to do a lookup.
+  """
+  # We only do a maximum number of lookup, to ensure that
+  # we don't go into infinite recursion.
+  if lookup_depth > MAX_LOOKUP_DEPTH:
+    return hostname
+
+  if hostname.endswith(zenodotus_subdomain):
+    try:
+      # If we have found a value, we recursively check it
+      # in the case of one zenodotus address pointing to 
+      # another zenodotus address.
+      # Increase the depth before doing the next lookup.
+      lookup_depth += 1
+      return lookup_address(cachedadvertise.lookup(hostname)[0], lookup_depth)
+    except NetworkAddressError:
+      # If we get a NetworkAddressError, there isn't much we can
+      # do, so we just return.
+      return hostname
+
+
+  # If the hostname is not a zenodotus name, we just do a
+  # normal gethostbyname lookup. This may raise an error,
+  # but that is to be expected.
+  return gethostbyname(hostname)
