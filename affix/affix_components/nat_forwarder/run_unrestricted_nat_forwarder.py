@@ -43,7 +43,7 @@ RECV_BYTES = 2**10
 # and clients can connect at once to the forwarder.
 # Note that for each client that connects to a server,
 # two new threads is started.
-MAX_SERVERS = 5
+MAX_SERVERS = 10
 MAX_CLIENTS_PER_SERVER = 5
 
 
@@ -81,6 +81,7 @@ def tcp_forwarder_listener():
     try:
       # Try to see if there is any connection waiting.
       remote_ip, remote_port, sockobj = tcp_forwarder_sock.getconnection()
+      logmsg("Incoming connection from '%s:%d'" % (remote_ip, remoteport), INFO_MSG)
     except SocketWouldBlockError:
       sleep(SLEEP_TIME)
     except Exception, err:
@@ -174,8 +175,11 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
         # it responds.
         createthread(launch_server_communication_thread(sockobj, server_id))
         
-        session_sendmessage(sockobj, CONNECT_SUCCESS)
-        
+        try:
+          session_sendmessage(sockobj, CONNECT_SUCCESS)
+        except SocketClosedRemote:
+          unregister_server(server_id)
+
         logmsg("Registered server '%s' successfully." % server_id, INFO_MSG)
       else:
         session_sendmessage(sockobj, CONNECT_FAIL)
@@ -235,8 +239,8 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
         # Start up two threads that can forward messages to each other.
         # We also need locks for each of the sockets as the two threads
         # will attempt to simulatenously recv and send through it.
-        createthread(forward_tcp_message(server_id, sockobj, cur_client_sockobj))
-        createthread(forward_tcp_message(server_id, cur_client_sockobj, sockobj))
+        createthread(forward_tcp_message(server_id, client_id, sockobj, cur_client_sockobj))
+        createthread(forward_tcp_message(server_id, client_id, cur_client_sockobj, sockobj))
         
         # Place the client socket in the connected clients list.
         registered_server[server_id]['connected_clients'].append(cur_client_sockobj)
@@ -247,10 +251,19 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
         # catch the exception. If an exception is raised, we do nothing as everything
         # will be cleaned up when the forward_tcp_message thread tries to forward any
         # messages.
-        session_sendmessage(sockobj, CONNECT_SUCCESS + ',' + client_id)
+        try:
+          session_sendmessage(sockobj, CONNECT_SUCCESS + ',' + client_id)
+        except (SocketClosedRemote, SocketClosedLocal), err:
+          # If the server connection has been closed, we unregister
+          # the server.
+          register_lock.acquire(True)
+          try:
+            unregister_server(server_id)
+          finally:
+            register_lock.release()
         try:
           session_sendmessage(cur_client_sockobj, CONNECT_SUCCESS)
-        except Exception, err:
+        except (SocketClosedRemote, SocketClosedLocal), err:
           logmsg("Couldn't connect server '%s' to client '%s'. Client closed connection. %s" %
                 (server_id, client_id, str(err)), ERR_MSG)
         logmsg("Made connection to '%s' from '%s'" % (server_id, client_id), INFO_MSG)
@@ -322,7 +335,7 @@ def handle_client_request(remote_ip, remote_port, server_id, sockobj):
 # ==============================================================
 # TCP Forwarder - Actual Message Forwarding
 # ==============================================================
-def forward_tcp_message(server_id, from_sock, to_sock):
+def forward_tcp_message(server_id, client_id, from_sock, to_sock):
   
   def _forward_tcp_message_helper():
     """
@@ -356,6 +369,7 @@ def forward_tcp_message(server_id, from_sock, to_sock):
         sleep(SLEEP_TIME)
       except (SocketClosedLocal, SocketClosedRemote):
         # If any of the socket is closed then we break out of the loop.
+        logmsg("Receiving socket '%s' was closed either locally or remotely." % str(from_sock), DEBUG_MSG)
         break
 
       if data_recv:
@@ -366,6 +380,7 @@ def forward_tcp_message(server_id, from_sock, to_sock):
           sleep(SLEEP_TIME)
         except (SocketClosedLocal, SocketClosedRemote):
           # If any of the socket is closed then we break out of the loop.
+          logmsg("Sending socket '%s' was closed either locally or remotely." % str(to_sock), DEBUG_MSG)
           break
   
     """
@@ -418,6 +433,9 @@ def forward_tcp_message(server_id, from_sock, to_sock):
     except:
       pass
      
+    logmsg("Connection terminated between server '%s' and client '%s'" % (server_id, client_id), INFO_MSG)
+
+
 
   # Return the helper function.	  
   return _forward_tcp_message_helper 	  
@@ -481,7 +499,12 @@ def launch_server_communication_thread(sockobj, server_id):
     # the server before we exit this thread.
     register_lock.acquire(True)
     try:
+      unregister_server(server_id)
       registered_server.pop(server_id)
+    except KeyError:
+      # If the key is not in the dictionary, then we don't have
+      # to worry about it.
+      pass
     finally:
       register_lock.release()
       
@@ -489,6 +512,17 @@ def launch_server_communication_thread(sockobj, server_id):
   
   return _server_communication_helper
     
+
+
+
+
+def unregister_server(server_id):
+
+  if server_id not in registered_server.keys():
+    return
+
+  registered_server[
+
     
     
 # ====================================================
@@ -506,6 +540,7 @@ def logmsg(message, msg_type):
     header += "DEBUG: "
 
   log(header + message + '\n')
+  sys.stdout.flush()
 
 
 # ====================================================
