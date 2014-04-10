@@ -24,6 +24,7 @@ advertisepipe = dy_import_module("advertisepipe.r2py")
 dy_import_module_symbols("affixstackinterface")
 dy_import_module_symbols("nat_forwarder_common_lib")
 iplib = dy_import_module("natdecideraffix.repy")
+time = dy_import_module("time.repy")
 
 # The affix string that the NAT Forwarder will use.
 NAT_AFFIX_STRING = "(CoordinationAffix)(NoopAffix)"
@@ -46,7 +47,8 @@ SLEEP_TIME = 0.001
 # segments in transit. This does not break the connection, but 
 # increases overhead.
 
-RECV_BYTES = min(getresources()[0]['netrecv'], getresources()[0]['netsend'])
+RECV_BYTES = int(min(getresources()[0]['netrecv'], 
+  getresources()[0]['netsend']))
 
 
 
@@ -106,8 +108,6 @@ def tcp_forwarder_listener():
     try:
       # Try to see if there is any connection waiting.
       remote_ip, remote_port, sockobj = tcp_forwarder_sock.getconnection()
-      logmsg("Incoming connection from '%s:%d'" % (remote_ip, remoteport), 
-        INFO_MSG)
     except SocketWouldBlockError:
       sleep(SLEEP_TIME)
     except Exception, err:
@@ -120,7 +120,8 @@ def tcp_forwarder_listener():
           conn_init_message, DEBUG_MSG)
         (conn_type, conn_id) = conn_init_message.split(',')
       except Exception, err:
-        logmsg("Error in connection establishment: " + 
+        logmsg("Error in connection establishment with " + str(remote_ip) + 
+          ":" + str(remote_port) + ": " + 
           str(type(err)) + " " + str(err), DEBUG_MSG)
         sockobj.close()
         continue
@@ -171,7 +172,8 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
       None.
     """
 
-    logmsg("Server '%s' requesting to register" % server_id, INFO_MSG)
+    logmsg("Server '%s' at %s:%s requesting to register" % 
+      (server_id, remote_ip, str(remote_port)), INFO_MSG)
     
     # Check to see if the server is already registered. If it is then 
     # we just return.
@@ -207,7 +209,9 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
           ###unregister_server(server_id)
           pass
         
-        logmsg("Registered server '%s' successfully." % server_id, INFO_MSG)
+        logmsg("Registered server '%s' at %s:%s successfully. %i server slots remain." % 
+          (server_id, remote_ip, str(remote_port), 
+          MAX_SERVERS - len(registered_server)), INFO_MSG)
       else:
         session_sendmessage(sockobj, CONNECT_FAIL)
         logmsg("Unable to register server '%s'. Max servers reached." % 
@@ -551,17 +555,15 @@ def launch_server_communication_thread(sockobj, server_id):
     logmsg("Unregistered server '%s'." % server_id, INFO_MSG) 
   
   return _server_communication_helper
-
-
-
-
-
+    
+    
+    
 # ====================================================
 # Common
 # ====================================================
 def logmsg(message, msg_type):
 
-  header = "[%.4f] " % getruntime()
+  header = "[%.4f] " % (time.time_gettime()-time.time_seconds_from_1900_to_1970)
 
   if msg_type == INFO_MSG:
     header += "INFO: "
@@ -577,7 +579,11 @@ def logmsg(message, msg_type):
 # Program Entry
 # ====================================================
 if callfunc == 'initialize':
+  log("Getting an NTP timestamp...\n")
+  time.time_updatetime(12345)
   logmsg("Starting unrestricted NAT forwarder.", INFO_MSG)
+  logmsg("MAX_SERVERS: " + str(MAX_SERVERS) + 
+    ", MAX_CLIENTS_PER_SERVER: " + str(MAX_CLIENTS_PER_SERVER), INFO_MSG)
 
   if len(callargs) < 1:
     log("Usage:\n\tpython run_unrestricted_nat_forwarder.py TCP_PORT [NAT_AFFIX_STRING]")
