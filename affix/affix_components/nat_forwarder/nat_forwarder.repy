@@ -24,7 +24,6 @@ advertisepipe = dy_import_module("advertisepipe.r2py")
 dy_import_module_symbols("affixstackinterface")
 dy_import_module_symbols("nat_forwarder_common_lib")
 iplib = dy_import_module("natdecideraffix.repy")
-
 # The affix string that the NAT Forwarder will use.
 NAT_AFFIX_STRING = "(CoordinationAffix)(NoopAffix)"
 
@@ -106,7 +105,7 @@ def tcp_forwarder_listener():
     try:
       # Try to see if there is any connection waiting.
       remote_ip, remote_port, sockobj = tcp_forwarder_sock.getconnection()
-      logmsg("Incoming connection from '%s:%d'" % (remote_ip, remoteport), 
+      logmsg("Incoming connection from '%s:%d'" % (remote_ip, remote_port), 
         INFO_MSG)
     except SocketWouldBlockError:
       sleep(SLEEP_TIME)
