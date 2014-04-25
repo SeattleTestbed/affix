@@ -295,11 +295,9 @@ class NatPunchAffix(BaseAffix):
     """
     
     # Extract the forwarder ip and port.
-    # Also retrieve a random localport that can be used to create a 
-    # connection to the forwarder.
     (forwarder_ip, forwarder_port) = self.default_forwarder
     
-    # Connect to the forwarder.
+    # Connect to the forwarder, trying connports in random order.
     possible_ports = list(getresources()[0]['connport'])
     random.random_shuffle(possible_ports)
     errorlist = []
@@ -309,17 +307,12 @@ class NatPunchAffix(BaseAffix):
         log(getruntime(), self, "Trying to connect_available_client using", forwarder_ip, 
           forwarder_port, getmyip(), localport, "\n")
 	new_sockobj = openconnection(forwarder_ip, forwarder_port, getmyip(), localport, _NAT_AFFIX_DEFAULT_TIMEOUT)
-        log(getruntime(), self, "Reaching here!\n")
         break
       except (AddressBindingError, DuplicateTupleError, AlreadyListeningError, 
         CleanupInProgressError, ConnectionRefusedError, TimeoutError), err:
-        log(getruntime(), self, "Naah,", repr(err), "for", getmyip(), localport, "\n")
         errorlist.append(repr(err))
-      except Exception, e:
-        log(getruntime(), self, "The actual problem is", repr(e))
     else: # We didn't succeed connecting via any of our local ports
-      log("No joy. Errors:", errorlist, "\n")
-      raise ResourceExhaustedError("Unable to connect to a client currently. Errors encountered: " + str(errorlist))
+      raise ResourceExhaustedError("NatPunchAffix unable to connect to a client currently. Errors encountered: " + str(errorlist))
 
     # If we reach this, we have a connection to a forwarder.
     # Use a sockettimeout object in order to perform socket.send and socket.recv
@@ -393,11 +386,8 @@ class NatPunchAffix(BaseAffix):
 
     # Now that we have a list of forwarders, try to connect to each one until
     # we successfully do. 
-    log("forwarder_list is", forwarder_list, "\n")
     for cur_forwarder in forwarder_list:
-      log("Trying forwarder", cur_forwarder, "\n")
-
-      # If there's no results, we sometimes get the empty string back
+      # If there are no results, we sometimes get the empty string back
       # from the advertising lookup.
       if not cur_forwarder:
         continue
@@ -406,9 +396,7 @@ class NatPunchAffix(BaseAffix):
       forwarder_port = int(forwarder_port_str)
 
       try:
-        log("Trying to connect\n")
         sockobj = openconnection(forwarder_ip, forwarder_port, localip, localport, _NAT_AFFIX_DEFAULT_TIMEOUT)
-        log("Connected, have", sockobj, "\n")
       # MMM: Should we also catch RepyArgumentError and AddressbindingError here? Currently we raise those.
       except (DuplicateTupleError, AlreadyListeningError, CleanupInProgressError, 
               ConnectionRefusedError, TimeoutError, InternetConnectivityError), err:
@@ -471,34 +459,10 @@ class NatPunchAffix(BaseAffix):
           continue
     # We have exhausted all the forwarders in the forwarder list.
     else:
-      log("Complaint! No forwarder connection possible!\n")
-      # Raise AddressBindingError if we are unable to connect to any forwarder.
-      raise AddressBindingError("Unable to connect to any NAT Forwarder.")
+      raise AddressBindingError("Unable to connect to any NAT Forwarder (" + 
+        str(forwarder_list) + ") on port " + str(forwarder_port))
     
 
-    
-    
-    
-# ================================================
-# Helper Functions
-# ================================================
-  def retrieve_random_tcp_port(self):
-    # We look up the allowed TCP ports and which ports are already being used.
-    # Then we pick an available port and use it as the localport to make a
-    # connection to the out node.	
-    (resource_list_limit, resource_list_usage, stoptimes) = getresources()
-    available_ports = list(resource_list_limit['connport'] - resource_list_usage['connport'])
-
-
-    # Choose a random port out of the available ports.
-    rand_index = int(randomfloat() * (len(available_ports)-1))
-    localport = available_ports[rand_index]
-
-    return localport
-
-    
-
-    
 
 
 # ---------------------- Required Public functions ------------------------
