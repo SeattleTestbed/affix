@@ -1,0 +1,119 @@
+"""
+Connect to myself using the Affix string (CoordinationAffix)(NatPunchAffix).
+This test relies on the actual advertise services and NAT forwarders to 
+run.
+"""
+#pragma repy restrictions.affix dylink.repy
+# XXX I need this for debugging!
+#pragma out
+
+
+dy_import_module_symbols("affixstackinterface.repy")
+random = dy_import_module("random.repy")
+
+# Configure server-listen and client-source ports dynamically. 
+# (The server IP:port combination is used as an advertise key for 
+# the NatPunchAffix. We don't want to advertise Affix info under 
+# a key that has been used in a previous run of this script.)
+available_ports = list(getresources()[0]["connport"])
+random.random_shuffle(available_ports)
+
+localip = getmyip()
+localport = available_ports[0]
+targetip = localip
+targetport = available_ports[1]
+
+
+# We use this message to test the connection.
+hello_message = str(getruntime()) + 1000 * "#"
+
+
+# Set up the Affix stack to use
+log(callargs, "\n")
+affix_object = AffixStackInterface("(CoordinationAffix)(NatPunchAffix)")
+listenforconnection = affix_object.listenforconnection
+openconnection = affix_object.openconnection
+
+
+# Helper function to do timestamped debug logging
+def logtn(*args):
+  logstring = "%4f" % getruntime()
+  for arg in args:
+    logstring += " " + str(arg)
+  else:
+    logstring += "\n"
+
+  log(logstring)
+
+
+
+# Do the client side of the test in a separate thread
+def connect_and_send_message():
+  logtn("Client opens connection.")
+  clientconnection = openconnection(targetip, targetport, localip, localport, 5)
+  logtn("Client connected!")
+  sent_bytes = 0
+  start = getruntime()
+  while getruntime()-start < 10:
+    try:
+      sent_bytes += clientconnection.send(hello_message[sent_bytes:])
+      logtn("Client sent", sent_bytes, "already...")
+    except SocketWouldBlockError:
+      sleep(0.1)
+    if sent_bytes == len(hello_message):
+      logtn("Client done sending.")
+      break
+  else:
+    raise Exception("Timed out sending test message!")
+
+  # If we reach this, sending went well.
+  clientconnection.close()
+  logtn("Client closed connection.")
+
+
+logtn("Config for this run: targetip", targetip, "targetport", targetport, 
+    "localip", localip, "localport", localport, "test message has", 
+    len(hello_message), "bytes.")
+
+# Set up the server...
+logtn("Server setting up listening socket.")
+serversocket = listenforconnection(targetip, targetport)
+
+# ...and try to connect to it.
+createthread(connect_and_send_message)
+
+# On the server side, wait for the incoming connection
+start = getruntime()
+while getruntime()-start < 5:
+  try: 
+    logtn("Server polling for incoming connection.")
+    (clientip, clientport, serverconnection) = serversocket.getconnection()
+    break
+  except SocketWouldBlockError:
+    sleep(0.1)
+else:
+  raise Exception("Timed out waiting for an incoming connection!")
+
+
+# Connected! Client sends the test message now, server receives it.
+logtn("Server got connection.")
+received_message = ""
+start = getruntime()
+while getruntime()-start < 10:
+  try:
+    received_message += serverconnection.recv(10000)
+    logtn("Server received", len(received_message), "so far...")
+  except SocketWouldBlockError:
+    sleep(0.1)
+
+  if received_message == hello_message: 
+    break
+else:
+  raise Exception("Timed out receiving the test message. Only received " + 
+      str(len(received_message)) + " bytes.")
+
+# If we reach here, all is well.
+logtn("Server received test message correctly. Closing.")
+serverconnection.close()
+serversocket.close()
+
