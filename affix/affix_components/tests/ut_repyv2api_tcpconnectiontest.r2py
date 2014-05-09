@@ -17,7 +17,7 @@ followed by created_thread(connect_and_send_message) so that the client
 connects in. (See the end of this script for a copy-and-paste template.)
 """
 
-random = dy_import_module("random.repy")
+random = dy_import_module("random.r2py")
 
 ################################################################
 # Common definitions used by client and server
