@@ -16,15 +16,14 @@
   1st June 2011
 """
 
-dy_import_module_symbols("random")
-dy_import_module_symbols("session")
-dy_import_module_symbols("baseaffix")
-sockettimeout = dy_import_module("sockettimeout")
-dy_import_module_symbols("affixstackinterface")
-dy_import_module_symbols("nat_forwarder_common_lib")
-advertise = dy_import_module("advertise.repy") # for AdvertiseError
+dy_import_module_symbols("session.r2py")
+dy_import_module_symbols("baseaffix.r2py")
+sockettimeout = dy_import_module("sockettimeout.r2py")
+dy_import_module_symbols("affixstackinterface.r2py")
+dy_import_module_symbols("nat_forwarder_common_lib.r2py")
+advertise = dy_import_module("advertise.r2py") # for AdvertiseError
 cachedadvertise = dy_import_module("cachedadvertise.r2py")
-random = dy_import_module("random.repy")
+random = dy_import_module("random.r2py")
 
 
 # The default timeout that is used when connecting to forwarder
@@ -377,7 +376,7 @@ class NatPunchAffix(BaseAffix):
         forwarder_list = cachedadvertise.lookup(NAT_FORWARDER_KEY)
         # We will randomize the forwarder list to try and distribute servers
         # across all the forwarders.
-        random_shuffle(forwarder_list)
+        random.random_shuffle(forwarder_list)
       except (advertise.AdvertiseError, TimeoutError), e:
         # Raise AddressBindingError if we are unable to connect to any forwarder.
         raise AddressBindingError("Unable to connect to any NAT Forwarder due to error " + repr(e))

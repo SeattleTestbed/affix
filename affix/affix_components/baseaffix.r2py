@@ -19,10 +19,10 @@
 """
 
 # Import all the exceptions.
-dy_import_module_symbols("affix_exceptions")
+dy_import_module_symbols("affix_exceptions.r2py")
 
 # Import all the wrapper classes.
-dy_import_module_symbols("affix_wrapper_lib")
+dy_import_module_symbols("affix_wrapper_lib.r2py")
 
 
 
