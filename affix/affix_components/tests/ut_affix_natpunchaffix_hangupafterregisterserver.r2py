@@ -1,11 +1,17 @@
 """
 Connect to myself using a NAT forwarder also hosted by this script. 
-Check that the NatPunchAffix in use raises an exception when the 
-connection to the NAT forwarder is lost.
+Check that the NatPunchAffix in use (rather than the client or server 
+thread) raises an exception when the connection to the NAT forwarder is lost.
 
 This is implemented by making the NAT forwarder hang up on purpose 
 after the server has registered.
 
+I'll take any exception string starting with "Timed out" to mean that 
+the client or server detected the problem. (My current NatPunchAffix 
+implementation raises a not totally appropriate SocketClosedLocal error; 
+we currently discuss adding a new TCPServerSocketInvalidError to 
+signal that condition, but it's not implemented yet).
+ 
 Note: Including the NAT forwarder code (rather than importing it 
 and overriding parts) is a really ugly hack. This needs to be done 
 better!
@@ -513,6 +519,7 @@ def launch_server_communication_thread(sockobj, server_id):
         request_type = session_recvmessage(sockobj)
         # XXX The server has sent us something, i.e. it is connected.
         # XXX Let's hang up for test purposes!
+        logmsg("Closing down the NAT forwarder...\n", INFO_MSG)
         break
         # Check if the server is requesting to see if there is any
         # clients waiting to be connected.
@@ -596,7 +603,24 @@ openconnection = affix_object.openconnection
 # Import the actual test
 dy_import_module_symbols("ut_repyv2api_tcpconnectiontest.r2py")
 
-createthread(launch_server)
+
+def launch_server_catch_exceptions():
+  """
+Wrap ut_repyv2api_tcpconnectiontest's launch_server to catch any 
+exception it might raise. Before the new TCPServerSocketInvalidError 
+is implemented, I'll check for SocketClosedLocal which my NatPunchAffix 
+(see https://github.com/aaaaalbert/affix-repo/commit/e7898e2cb3ebb7b4e978c92194b54d91f2075eeb)
+happens to raise.
+"""
+  try:
+    launch_server()
+  except SocketClosedLocal:
+    # Raised by the NatPunchAffix (which is desired). Exit 
+    # without raising.
+    exitall()
+
+
+createthread(launch_server_catch_exceptions)
 # Wait a bit until the server has launched, advertised its Affix stack etc.
 sleep(5)
 createthread(connect_and_send_message)
