@@ -45,7 +45,7 @@ SLEEP_TIME = 0.001
 # segments in transit. This does not break the connection, but 
 # increases overhead.
 
-RECV_BYTES = min(getresources()[0]['netrecv'], getresources()[0]['netsend'])
+RECV_BYTES = int(min(getresources()[0]['netrecv'], getresources()[0]['netsend']))
 
 
 
@@ -110,9 +110,9 @@ def tcp_forwarder_listener():
     except SocketWouldBlockError:
       sleep(SLEEP_TIME)
     except Exception, err:
-      logmsg("Error in getconnection: " + str(err), DEBUG_MSG)
+      logmsg("Error in getconnection: " + str(err), ERR_MSG)
     else:
-      logmsg("Got connection from " + str(remote_ip) + ":" + str(remote_port), DEBUG_MSG)
+      logmsg("Got connection from " + str(remote_ip) + ":" + str(remote_port), INFO_MSG)
       try:
         conn_init_message = session_recvmessage(sockobj)
         logmsg(str(remote_ip) + ":" + str(remote_port) + " said " + 
@@ -133,9 +133,11 @@ def tcp_forwarder_listener():
       elif conn_type == CONNECT_SERVER_TAG:
         # This is the case when a registered server opens up a connection to
         # the forwarder in order for it to be connected to a client.
+        logmsg("Received request from server '%s:%d' to connect to a client." % (remote_ip, remote_port), INFO_MSG)
         createthread(handle_server_conn_request(remote_ip, remote_port, conn_id, sockobj))
       elif conn_type == CONNECT_CLIENT_TAG:
         # Lanuch a new thread to deal with the new incoming client connection.
+        logmsg("Received a request from client '%s:d' to connect to a server." % (remote_ip, remote_port), INFO_MSG)
         createthread(handle_client_request(remote_ip, remote_port, conn_id, sockobj))
       else:
         logmsg("Incorrect connection type received from '%s:%d': %s" % 
@@ -202,9 +204,9 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
         
         try:
           session_sendmessage(sockobj, CONNECT_SUCCESS)
-        except SockedClosedRemote:
-          ###unregister_server(server_id)
-          pass
+        except SocketClosedRemote, err:
+          logmsg("Socket closed while registering server. " + str(err), DEBUG_MSG)
+          unregister_server(server_id)
         
         logmsg("Registered server '%s' successfully." % server_id, INFO_MSG)
       else:
@@ -217,6 +219,30 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
       
   return _register_server_helper
   
+
+
+
+
+def unregister_server(server_id):
+  """
+  The purpose of this function is to remove a registered
+  server from the registered server dictionary. Thus un-
+  registering the server.
+  """
+  register_lock.acquire(True)
+  try:
+    registered_server.pop(server_id)
+  except KeyError:
+    # If the server id does not exist, we don't
+    # need to worry about it.
+    logmsg("Attempted to unregister unknow server '%s'" % server_id, DEBUG_MSG)
+    pass
+  except Exception, err:
+    logmsg("Unexpected error while unregistering server '%s': %s" % (str(server_id), str(err)), DEBUG_MSG)
+  finally:
+    register_lock.release()
+
+
   
   
 def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):  
@@ -233,7 +259,8 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
     <Arguments>
       remote_ip - The ip address of the node that made the initial connection.
       remote_port - The port number of the node that made the initial connection.
-      sockobj - The socket that will be used for communication.
+      sockobj - The socket that will be used for communication. This is the
+        server socket.
      
     <Exception>
       None.
@@ -287,11 +314,10 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
         except (SocketClosedRemote, SocketClosedLocal), err:
           # If the server connection has been closed, we unregister
           # the server.
-          try:
-            register_lock.acquire(True)
-          finally:
-            register_lock.release()
-
+          # MMM: Would this cause any issue if the server tries to
+          # connect in the future?
+          unregister_server(server_id)
+          
         try:
           session_sendmessage(cur_client_sockobj, CONNECT_SUCCESS)
         except (SocketClosedRemote, SocketClosedLocal), err:
@@ -536,16 +562,7 @@ def launch_server_communication_thread(sockobj, server_id):
 
     # Once we have broken out of the loop, we are going to unregister
     # the server before we exit this thread.
-    register_lock.acquire(True)
-    try:
-      ###unregister_server(server_id)
-      registered_server.pop(server_id)
-    except KeyError:
-      # If the key is not in the dictionary, then we don't have have 
-      # to worry about it.
-      pass
-    finally:
-      register_lock.release()
+    unregister_server(server_id)
       
     logmsg("Unregistered server '%s'." % server_id, INFO_MSG) 
   
