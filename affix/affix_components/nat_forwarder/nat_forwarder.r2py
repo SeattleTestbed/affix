@@ -603,7 +603,12 @@ def logmsg(message, msg_type):
 # Program Entry
 # ====================================================
 if callfunc == 'initialize':
+  log("Getting an NTP timestamp...\n")
+  time.time_updatetime(63197)
   logmsg("Starting unrestricted NAT forwarder.", INFO_MSG)
+  logmsg("MAX_SERVERS: " + str(MAX_SERVERS) +
+    ", MAX_CLIENTS_PER_SERVER: " + str(MAX_CLIENTS_PER_SERVER), INFO_MSG)
+
 
   if len(callargs) < 1:
     log("Usage:\n\tpython run_unrestricted_nat_forwarder.py TCP_PORT [FORWARDER_KEY]")
