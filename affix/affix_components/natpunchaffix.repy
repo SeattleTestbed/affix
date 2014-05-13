@@ -139,6 +139,7 @@ class NatPunchAffix(BaseAffix):
 
 
     # We will do a lookup on our localip, in case this is a zenodotus name.
+    # The function lookup_address is currently defined in affix_wrapper_lib
     localip = lookup_address(localip)
 
     # Make a connection to the forwarder. Exceptions may be raised, if they are then we raise them.
@@ -399,6 +400,7 @@ class NatPunchAffix(BaseAffix):
 
     # We are going to do a lookup on the localip, in case it is 
     # a zenodotus name.
+    # The function lookup_address is currently defined in affix_wrapper_lib
     localip = lookup_address(localip)
 
     # Now that we have a list of forwarders, try to connect to each one until
