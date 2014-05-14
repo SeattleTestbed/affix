@@ -138,6 +138,9 @@ class NatPunchAffix(BaseAffix):
       raise ConnectionRefusedError("NAT forwarder is not specified. Cannot establish connection.")
 
 
+    # We will do a lookup on our localip, in case this is a zenodotus name.
+    localip = lookup_address(localip)
+
     # Make a connection to the forwarder. Exceptions may be raised, if they are then we raise them.
     forwarder_ip, forwarder_port = self.default_forwarder
     if _NAT_AFFIX_DEBUG_MODE:
@@ -231,6 +234,9 @@ class NatPunchAffix(BaseAffix):
     <Return>
       (remoteip, remoteport, socketobj) - for the connection.
     """
+    
+    if _NAT_AFFIX_DEBUG_MODE:
+      log("[NatPunchAffix] Received a getconnection call...\n")    
 
     if nat_serversocket._closed:
       raise SocketClosedLocal("The NAT TCPServerSocket has been closed.")
@@ -248,12 +254,18 @@ class NatPunchAffix(BaseAffix):
       # maybe that forwarder doesn't exist anymore). Pretend the socket 
       # was closed locally even when it wasn't.
       nat_serversocket.close()
+
+      if _NAT_AFFIX_DEBUG_MODE:
+        log("[NatPunchAffix] Forwarder closed connection, raising SocketClosedLocal")
+
       raise SocketClosedLocal("NatPunchAffix: This socket is no longer available for listening as we lost the connection to our listening proxy with error '" + 
         repr(e) + "'. Sorry for raising what seems to be the wrong exception.")
 
 
     # If there is an available client, we try to establish a connection.
     if nat_response == CLIENT_AVAILABLE:
+      if _NAT_AFFIX_DEBUG_MODE:
+        log("[NatPunchAffix] Found available client waiting to connect.")
       return self.connect_available_client(server_id)
     else:
       raise SocketWouldBlockError("Unable to connect to any client currently.")
@@ -311,6 +323,8 @@ class NatPunchAffix(BaseAffix):
         CleanupInProgressError, ConnectionRefusedError, TimeoutError), err:
         errorlist.append(repr(err))
     else: # We didn't succeed connecting via any of our local ports
+      if _NAT_AFFIX_DEBUG_MODE:
+        log("[NatPunchAffix] Cannot accept anymore clients due to exhausted local ports.")
       raise ResourceExhaustedError("NatPunchAffix unable to connect to a client currently. Errors encountered: " + str(errorlist))
 
     # If we reach this, we have a connection to a forwarder.
@@ -382,6 +396,10 @@ class NatPunchAffix(BaseAffix):
         raise AddressBindingError("Unable to connect to any NAT Forwarder due to error " + repr(e))
 
 
+
+    # We are going to do a lookup on the localip, in case it is 
+    # a zenodotus name.
+    localip = lookup_address(localip)
 
     # Now that we have a list of forwarders, try to connect to each one until
     # we successfully do. 
