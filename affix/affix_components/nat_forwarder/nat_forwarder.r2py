@@ -137,7 +137,7 @@ def tcp_forwarder_listener():
         createthread(handle_server_conn_request(remote_ip, remote_port, conn_id, sockobj))
       elif conn_type == CONNECT_CLIENT_TAG:
         # Lanuch a new thread to deal with the new incoming client connection.
-        logmsg("Received a request from client '%s:d' to connect to a server." % (remote_ip, remote_port), INFO_MSG)
+        logmsg("Received a request from client '%s:%d' to connect to a server." % (remote_ip, remote_port), INFO_MSG)
         createthread(handle_client_request(remote_ip, remote_port, conn_id, sockobj))
       else:
         logmsg("Incorrect connection type received from '%s:%d': %s" % 
