@@ -477,7 +477,8 @@ class NatPunchAffix(BaseAffix):
     # We have exhausted all the forwarders in the forwarder list.
     else:
       raise AddressBindingError("Unable to connect to any NAT Forwarder (" + 
-        str(forwarder_list) + ") on port " + str(forwarder_port))
+        str(forwarder_list) + ") using localip:localport " + 
+        str(localip) + ":" + str(localport))
     
 
 
