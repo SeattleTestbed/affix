@@ -1,7 +1,14 @@
 """
 Verify that the NAT forwarder survives and counts registered server slots 
-correctly even when a server closes its side of the control connection socket.
-The forwarder and server are both hosted by this script.
+correctly even when a server closes its side of the control connection 
+socket during connection setup. The server does this by making a deliberately 
+botched connection attempt, then hanging up, then doing a correct setup 
+and running the RepyV2 TCP connection test across the forwarder.
+
+The forwarder, server, and client are all hosted by this script.
+
+Possible errors with an unstable NAT forwarder include crashes when the 
+server first hangs up, and no available server slots afterwards.
 
 NOTE: Again, copy-pasta-ing the forwarder code here is ugly, but 
 I don't currently know a better way of making the overrides work.
@@ -612,13 +619,17 @@ def logmsg(message, msg_type):
 # End import of nat_forwarder.r2py
 ########################################################################
 
+
+
+log("Setting up NAT forwarder.\n")
 forwarder_port = available_ports.pop()
 mycontext['listenport_tcp'] = forwarder_port
 createthread(tcp_forwarder_listener)
+log("NAT forwarder started.\n")
 
 
 
-
+log("Starting botched setup attempt.\n")
 # Emulate NatPunchAffix's NAT forwarder connection setup, 
 # see NatPunchAffix.connect_to_forwarder()
 server_port = available_ports.pop()
@@ -628,6 +639,8 @@ sockobj = openconnection(getmyip(), forwarder_port, getmyip(), server_port, 10)
 sockobj.send("100\n" + SERVER_REGISTER + "," + 
     getmyip() + "," + str(server_port))
 sockobj.close()
+log("Done with botched setup attempt.\n")
+log("Setting up RepyV2 TCP connection test now.\n")
 
 # The forwarder should (1) stay alive and (2) dergister the previous server 
 # so that the MAX_SERVERS limit is restored to 1. We'll check by 

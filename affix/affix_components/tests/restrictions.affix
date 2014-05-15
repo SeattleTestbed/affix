@@ -1,12 +1,12 @@
 resource cpu .50
 resource memory 20000000   # 20 Million bytes
 resource diskused 100000000 # 100 MB
-resource events 10
+resource events 100
 resource filewrite 10000000
 resource fileread 10000000
 resource filesopened 20
-resource insockets 10
-resource outsockets 10
+resource insockets 100
+resource outsockets 100
 resource netsend 10000
 resource netrecv 10000
 resource loopsend 1000000
@@ -14,6 +14,27 @@ resource looprecv 1000000
 resource lograte 3000000
 resource random 100000
 resource messport 34612   # use for getting an NTP update
+resource messport 63100
+resource messport 63101
+resource messport 63102
+resource messport 63103
+resource messport 63104
+resource messport 63105
+resource messport 63106
+resource messport 63107
+resource messport 63108
+resource messport 63109
+resource messport 63110
+resource messport 63111
+resource messport 63112
+resource messport 63113
+resource messport 63114
+resource messport 63115
+resource messport 63116
+resource messport 63117
+resource messport 63118
+resource messport 63119
+
 resource connport 12345 # Use for first source port for openconnection.
 resource connport 12346 # Use for second source port for openconnection.
 resource connport 63100
