@@ -5,7 +5,7 @@ by natpunchaffix.repy
 """
 
 # Key to advertise forwarder with.
-NAT_FORWARDER_KEY = ['__NAT_AFFIX_FORWARDER__', '__NAT_AFFIX_FORWARDER--post-7209__']
+NAT_FORWARDER_KEY = '__NAT_AFFIX_FORWARDER__'
 
 
 # Connection Tags.

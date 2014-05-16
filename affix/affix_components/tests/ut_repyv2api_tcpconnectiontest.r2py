@@ -1,0 +1,151 @@
+#pragma repy restrictions.affix dylink.repy
+
+# We print debug messages when run outside of utf.py, so make utf ignore them
+#pragma out
+
+"""
+A simple connection test, also usable as a library.
+
+Connect to myself using network calls overriden by my caller.
+This script hosts both the server that will accept the connection, and 
+the client that connects in and sends a test message. If the test message 
+is received correctly, then the test has passed!
+
+In the calling program, override listenforconnection and openconnection,
+e.g. by you desired Affix stack's versions.  Then, call launch_server(), 
+followed by created_thread(connect_and_send_message) so that the client 
+connects in. (See the end of this script for a copy-and-paste template.)
+"""
+
+random = dy_import_module("random.r2py")
+
+################################################################
+# Common definitions used by client and server
+
+# Configure server-listen and client-source ports dynamically. 
+# (The server IP:port combination is used as an advertise key for 
+# the NatPunchAffix. We don't want to advertise Affix info under 
+# a key that has been used in a previous run of this script.)
+available_ports = list(getresources()[0]["connport"])
+random.random_shuffle(available_ports)
+
+localip = getmyip()
+localport = available_ports[0]
+targetip = localip
+targetport = available_ports[1]
+
+
+# We use this message to test the connection.
+hello_message = str(getruntime()) + 1000 * "#"
+
+
+# Helper function to do timestamped debug logging
+def logtn(*args):
+  logstring = "%4f" % getruntime()
+  for arg in args:
+    logstring += " " + str(arg)
+  else:
+    logstring += "\n"
+
+  log(logstring)
+
+
+
+# Do the client side of the test in a separate thread
+def connect_and_send_message():
+  logtn("Client opens connection.")
+  clientconnection = openconnection(targetip, targetport, localip, localport, 5)
+  logtn("Client connected!")
+  sent_bytes = 0
+  start = getruntime()
+  while getruntime()-start < 10:
+    try:
+      sent_bytes += clientconnection.send(hello_message[sent_bytes:])
+      logtn("Client sent", sent_bytes, "already...")
+    except SocketWouldBlockError:
+      sleep(0.1)
+    if sent_bytes == len(hello_message):
+      logtn("Client done sending.")
+      break
+  else:
+    raise Exception("Timed out sending test message!")
+
+  # If we reach this, sending went well.
+  clientconnection.close()
+  logtn("Client closed connection.")
+
+
+
+
+def launch_server():
+  logtn("Config for this run: targetip", targetip, "targetport", targetport, 
+      "localip", localip, "localport", localport, "test message has", 
+      len(hello_message), "bytes.")
+
+  # Start the server
+  logtn("Server setting up listening socket.")
+  serversocket = listenforconnection(targetip, targetport)
+
+  # Wait for the incoming connection
+  start = getruntime()
+  while getruntime()-start < 15:
+    try: 
+      logtn("Server polling for incoming connection.")
+      (clientip, clientport, serverconnection) = serversocket.getconnection()
+      # Theoretically, someone else than our client could connect.
+      # However, it's generally not useful to check for clientip==getmyip() 
+      # because a NAT forwarder could be used, and getconnection would then 
+      # report our client's *external* IP.
+      break
+    except SocketWouldBlockError:
+      sleep(0.1)
+  else:
+    raise Exception("Timed out waiting for an incoming connection!")
+
+
+  # Connected, so stop listening for further connections. 
+  logtn("Server got connection. Will stop listening now.")
+  serversocket.close()
+
+  # Client sends the test message now, server receives it.
+  received_message = ""
+  start = getruntime()
+  while getruntime()-start < 10:
+    try:
+      received_message += serverconnection.recv(10000)
+      logtn("Server received", len(received_message), "so far...")
+    except SocketWouldBlockError:
+      sleep(0.1)
+
+    if received_message == hello_message: 
+      break
+  else:
+    raise Exception("Timed out receiving the test message. Received " + 
+	str(len(received_message)) + " bytes.")
+
+  # If we reach here, all is well.
+  logtn("Server received test message correctly. Closing.")
+  serverconnection.close()
+
+
+
+# If called as a program (rather than imported as a library), perform the test.
+if callfunc == "initialize":
+  """
+  # In the program importing this library, you would do something like this:
+  dy_import_module_symbols("affixstackinterface.repy")
+  affix_stack = AffixStackInterface("(MyDesiredAffix1)(MyDesiredAffix2)")
+  listenforconnection = affix_stack.listenforconnection
+  openconnection = affix_stack.openconnection
+
+  # Only then import this library:
+  dy_import_module_symbols("ut_repyv2api_tcpconnectiontest.r2py")
+
+  # Then do the following to acutally start the test:
+  """
+  createthread(launch_server)
+  # You will want to wait a bit until the server has launched, advertised 
+  # its Affix stack etc.
+  sleep(5)
+  createthread(connect_and_send_message)
+

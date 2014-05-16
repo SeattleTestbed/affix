@@ -1,7 +1,32 @@
-#!/bin/python
+"""
+Overloads a nat forwarder with a low max-server limitation.
+
+Makes sure that the forwarder and affix stack behave in an expected manner
+when this event occurs.  We expect to see an AddressBindingError on the
+server when this occurs.
+
+"""
+#pragma out 0 server slots remain.
+#pragma out Max servers reached.
+
+#pragma repy restrictions.affix dylink.r2py
+#pragma error Unable to connect to any NAT Forwarder.
+
+# required for logging
+time = dy_import_module('time.r2py')
+time.time_updatetime(34612)
+
+
+MAX_SERVERS = 1
+
+mycontext['listenport_tcp'] = 34612 # 12345
+
+
+
+
 """
 <Program Name>
-  nat_forwarder.repy
+  nat_forwarder.r2py
 
 <Purpose>
   The purpose of this program is to act as a nat forwarder.
@@ -16,16 +41,16 @@
   monzum@cs.washington.edu
 
 <Usage>
-  python repy.py RESTRICTION_FILE nat_forwarder.repy TCP_PORT 
+  python repy.py RESTRICTION_FILE dylink.repy nat_forwarder.repy TCP_PORT 
+    [ NAT_FORWARDER_KEY ]
 """
 
-dy_import_module_symbols("session")
+dy_import_module_symbols("session.r2py")
 advertisepipe = dy_import_module("advertisepipe.r2py")
-dy_import_module_symbols("affixstackinterface")
-dy_import_module_symbols("nat_forwarder_common_lib")
-iplib = dy_import_module("natdecideraffix.repy")
-# The affix string that the NAT Forwarder will use.
-NAT_AFFIX_STRING = "(CoordinationAffix)(NoopAffix)"
+dy_import_module_symbols("affixstackinterface.r2py")
+dy_import_module_symbols("nat_forwarder_common_lib.r2py")
+iplib = dy_import_module("natdecideraffix.r2py")
+time = dy_import_module("time.r2py")
 
 
 # Time to sleep if socket is blocking.
@@ -45,7 +70,8 @@ SLEEP_TIME = 0.001
 # segments in transit. This does not break the connection, but 
 # increases overhead.
 
-RECV_BYTES = int(min(getresources()[0]['netrecv'], getresources()[0]['netsend']))
+RECV_BYTES = int(min(getresources()[0]['netrecv'], 
+  getresources()[0]['netsend']))
 
 
 
@@ -63,10 +89,7 @@ RECV_BYTES = int(min(getresources()[0]['netrecv'], getresources()[0]['netsend'])
 # I will provide at least one server slot.
 # YMMV. Override these values for your use case!
 
-buffer = 4   # main and advertise thread, and two spares
-available_threads = getresources()[0]['events'] - buffer
-MAX_CLIENTS_PER_SERVER = 2
-MAX_SERVERS = max(1, int(available_threads/2/MAX_CLIENTS_PER_SERVER))
+MAX_CLIENTS_PER_SERVER = 3
 
 
 
@@ -94,12 +117,11 @@ register_lock = createlock()
 def tcp_forwarder_listener():
 
   # Create a TCP server socket.
-  affix_stack_object = AffixStackInterface(NAT_AFFIX_STRING)
-  tcp_forwarder_sock = affix_stack_object.listenforconnection(getmyip(), mycontext['listenport_tcp'])
+  tcp_forwarder_sock = listenforconnection(getmyip(), 
+    mycontext['listenport_tcp'])
   
   logmsg("Started TCP NAT Forwarder listener on '%s' port '%d'" % 
          (getmyip(), mycontext['listenport_tcp']), INFO_MSG)
-  logmsg("NAT Forwarder using affix string '%s'." % NAT_AFFIX_STRING, INFO_MSG)
 
   while True:
     try:
@@ -119,7 +141,8 @@ def tcp_forwarder_listener():
           conn_init_message, DEBUG_MSG)
         (conn_type, conn_id) = conn_init_message.split(',')
       except Exception, err:
-        logmsg("Error in connection establishment: " + 
+        logmsg("Error in connection establishment with " + str(remote_ip) + 
+          ":" + str(remote_port) + ": " + 
           str(type(err)) + " " + str(err), DEBUG_MSG)
         sockobj.close()
         continue
@@ -137,7 +160,7 @@ def tcp_forwarder_listener():
         createthread(handle_server_conn_request(remote_ip, remote_port, conn_id, sockobj))
       elif conn_type == CONNECT_CLIENT_TAG:
         # Lanuch a new thread to deal with the new incoming client connection.
-        logmsg("Received a request from client '%s:d' to connect to a server." % (remote_ip, remote_port), INFO_MSG)
+        logmsg("Received a request from client '%s:%d' to connect to a server." % (remote_ip, remote_port), INFO_MSG)
         createthread(handle_client_request(remote_ip, remote_port, conn_id, sockobj))
       else:
         logmsg("Incorrect connection type received from '%s:%d': %s" % 
@@ -172,7 +195,8 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
       None.
     """
 
-    logmsg("Server '%s' requesting to register" % server_id, INFO_MSG)
+    logmsg("Server '%s' at %s:%s requesting to register" % 
+      (server_id, remote_ip, str(remote_port)), INFO_MSG)
     
     # Check to see if the server is already registered. If it is then 
     # we just return.
@@ -205,14 +229,18 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
         try:
           session_sendmessage(sockobj, CONNECT_SUCCESS)
         except SocketClosedRemote, err:
-          logmsg("Socket closed while registering server. " + str(err), DEBUG_MSG)
+          logmsg("Socket closed while registering server. " + repr(err), DEBUG_MSG)
           unregister_server(server_id)
-        
-        logmsg("Registered server '%s' successfully." % server_id, INFO_MSG)
+
+        logmsg("Registered server '%s' at %s:%s successfully. %i server slots remain." % 
+          (server_id, remote_ip, str(remote_port), 
+          MAX_SERVERS - len(registered_server)), INFO_MSG)
       else:
         session_sendmessage(sockobj, CONNECT_FAIL)
-        logmsg("Unable to register server '%s'. Max servers reached." % 
-          server_id, INFO_MSG)
+        logmsg("Unable to register server '%s' on %s:%s. Max servers reached." %
+          (server_id, remote_ip, str(remote_port)), INFO_MSG)
+    except Exception, e:
+      logmsg("Error " + repr(e), INFO_MSG)
     finally:
       register_lock.release()
       
@@ -238,10 +266,10 @@ def unregister_server(server_id):
     logmsg("Attempted to unregister unknow server '%s'" % server_id, DEBUG_MSG)
     pass
   except Exception, err:
-    logmsg("Unexpected error while unregistering server '%s': %s" % (str(server_id), str(err)), DEBUG_MSG)
+    logmsg("Unexpected error while unregistering server '%s': %s" % (str(server_id), repr(err)), DEBUG_MSG)
   finally:
-    register_lock.release()
-
+    register_lock.release() 
+ 
 
   
   
@@ -260,7 +288,7 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
       remote_ip - The ip address of the node that made the initial connection.
       remote_port - The port number of the node that made the initial connection.
       sockobj - The socket that will be used for communication. This is the
-        server socket.
+          server socket.
      
     <Exception>
       None.
@@ -271,14 +299,14 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
       <Return>
       None.
     """
-    logmsg("Server '" + str(server_id) + 
-      "' has made a connection in order for a client to connect.", INFO_MSG)
+    logmsg("Server '%s' at %s:%s has made a connection in order for a client to connect." %
+      (server_id, remote_ip, str(remote_port)), INFO_MSG)
             
     # Check to make sure that the server has registered already.
     if server_id not in registered_server.keys():
       session_sendmessage(sockobj, CONNECT_FAIL)
       logmsg("Server '%s' attempting to connect to client before registering" %
-        server_id, ERR_MSG)
+              server_id, ERR_MSG)
       return
    
    
@@ -562,9 +590,14 @@ def launch_server_communication_thread(sockobj, server_id):
 
     # Once we have broken out of the loop, we are going to unregister
     # the server before we exit this thread.
-    unregister_server(server_id)
+    register_lock.acquire(True)
+    try:
+      registered_server.pop(server_id)
+    finally:
+      register_lock.release()
       
-    logmsg("Unregistered server '%s'." % server_id, INFO_MSG) 
+    logmsg("Unregistered server '%s'. %i server slots free." % 
+      (server_id, MAX_SERVERS - len(registered_server)), INFO_MSG) 
   
   return _server_communication_helper
 
@@ -577,7 +610,7 @@ def launch_server_communication_thread(sockobj, server_id):
 # ====================================================
 def logmsg(message, msg_type):
 
-  header = "[%.4f] " % getruntime()
+  header = "[%.4f] " % (time.time_gettime()-time.time_seconds_from_1900_to_1970)
 
   if msg_type == INFO_MSG:
     header += "INFO: "
@@ -589,39 +622,46 @@ def logmsg(message, msg_type):
   log(header + message + '\n')
 
 
-# ====================================================
-# Program Entry
-# ====================================================
-if callfunc == 'initialize':
-  logmsg("Starting unrestricted NAT forwarder.", INFO_MSG)
 
-  if len(callargs) < 1:
-    log("Usage:\n\tpython run_unrestricted_nat_forwarder.py TCP_PORT [NAT_AFFIX_STRING]")
-    exitall()
+log("Setting up NAT forwarder.\n")
+mycontext['listenport_tcp'] = 12345
+createthread(tcp_forwarder_listener)
+log("NAT forwarder started.\n")
 
-  mycontext['listenport_tcp'] = int(callargs[0])
 
-  if len(callargs) >= 2:
-    NAT_AFFIX_STRING = callargs[1]
-  
-  myip, myport = getmyip(), str(mycontext['listenport_tcp'])
 
-  if iplib.is_private_ipv4_address(getmyip()):
-    logmsg(
-"""NOTE WELL: You are trying to run a NAT forwarder on a private IP address. 
-This leaves the forwarder uncontactable from the public Internet unless 
-you set up port forwarding etc. on your NAT gateway. I'll let you proceed 
-regardless. You hopefully know what you do.""", ERR_MSG)
-  
-  # Launch the TCP Forwarder.
-  logmsg("Creating forwarder thread on " + myip + ":" + str(myport), INFO_MSG)
-  createthread(tcp_forwarder_listener)
-  
-  # Launch advertiser and advertise this forwarders ip address, tcp port.
-  advertise_value = myip + ':' + myport 
-  logmsg("Starting advertise thread for " + str(NAT_FORWARDER_KEY) + 
-    ": " + advertise_value, INFO_MSG)
 
-  for forwarder_key in NAT_FORWARDER_KEY:
-    advertisepipe.add_to_pipe(forwarder_key, advertise_value)
+
+dy_import_module_symbols("affixstackinterface.r2py")
+
+# Set up the Affix stack to use, and override the network calls we need.
+# We'll host the forwarder ourselves for this test.
+affix_object = AffixStackInterface("(NatPunchAffix," + getmyip() + ":" + 
+    str(mycontext['listenport_tcp']) + ")")
+listenforconnection = affix_object.listenforconnection
+openconnection = affix_object.openconnection
+
+
+def open_socket_and_sleep(port):
+  def open_socket_and_sleep_handler():
+    log("Port is", port, "\n")
+    socket = listenforconnection(getmyip(), port)
+    while True:
+      sleep(1.0)
+    # Needed so that socket doesn't go out of scope too early
+    socket.close()
+  return open_socket_and_sleep_handler
+
+
+# Give the forwarder some time to set up...
+sleep(10)
+
+createthread(open_socket_and_sleep(63100))
+# Why do we need a sleep here?  Without it we get some sort of KeyError...
+# Smells like some kind of race condition.
+sleep(10)
+
+# This second one should fail with a AddressBindingError, since the forwarder
+# only supports 1 server.
+createthread(open_socket_and_sleep(63101))
 

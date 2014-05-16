@@ -33,10 +33,10 @@
 
 """
 
-dy_import_module_symbols("baseaffix")
-dy_import_module_symbols("advertise_objects")
-dy_import_module_symbols("affix_exceptions")
-dy_import_module_symbols("affixstackinterface")
+dy_import_module_symbols("baseaffix.r2py")
+dy_import_module_symbols("advertise_objects.r2py")
+dy_import_module_symbols("affix_exceptions.r2py")
+dy_import_module_symbols("affixstackinterface.r2py")
 
 # Whether we want to print debug statements.
 _COORDINATION_AFFIX_DEBUG_MODE = False

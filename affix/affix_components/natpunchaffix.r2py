@@ -34,7 +34,7 @@ _NAT_AFFIX_DEFAULT_TIMEOUT = 10
 _NAT_SOCKET_TIMEOUT = 10
 
 # Whether we want to print debug statements.
-_NAT_AFFIX_DEBUG_MODE =  True
+_NAT_AFFIX_DEBUG_MODE = False # True
 
 
 class NatSockObj:
@@ -479,7 +479,8 @@ class NatPunchAffix(BaseAffix):
     # We have exhausted all the forwarders in the forwarder list.
     else:
       raise AddressBindingError("Unable to connect to any NAT Forwarder (" + 
-        str(forwarder_list) + ") on port " + str(forwarder_port))
+        str(forwarder_list) + ") using localip:localport " + 
+        str(localip) + ":" + str(localport))
     
 
 

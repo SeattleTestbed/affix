@@ -1,0 +1,42 @@
+"""
+Verify that a server (party requesting from a NAT forwarder to listen on 
+its behalf) can register, deregister, and re-register at the same forwarder 
+and use its services regardless of its connection history.
+"""
+#pragma repy restrictions.affix dylink.r2py
+#pragma out
+
+# required for logging
+time = dy_import_module('time.r2py')
+time.time_updatetime(34612)
+
+
+nat_forwarder = dy_import_module('nat_forwarder.r2py')
+
+nat_forwarder.mycontext['listenport_tcp'] = 12345
+createthread(nat_forwarder.tcp_forwarder_listener)
+
+
+dy_import_module_symbols("affixstackinterface.r2py")
+
+# Set up the Affix stack to use, and override the network calls we need.
+# We'll host the forwarder ourselves for this test.
+affix_object = AffixStackInterface("(NatPunchAffix," + getmyip() + ":" + 
+    str(nat_forwarder.mycontext['listenport_tcp']) + ")")
+listenforconnection = affix_object.listenforconnection
+openconnection = affix_object.openconnection
+
+
+# Connect to the forwarder, send/receive a test message, redo.
+for i in range(2):
+  # XXX Imported here in the hope to make client and server use "fresh" 
+  # XXX random ports, but that doesn't work as expected.
+  # XXX Therefore, we reuse the old quintuple between the server and 
+  # XXX the forwarder, and see an AddressBindingError. Way to go!
+  dy_import_module_symbols("ut_repyv2api_tcpconnectiontest.r2py")
+  log("Iteration", i, "\n")
+  createthread(launch_server)
+  sleep(5)
+  createthread(connect_and_send_message)
+  sleep(5)
+

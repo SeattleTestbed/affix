@@ -73,8 +73,7 @@ def find_and_register_affix(affix_name):
     # Try to import the affix file. We convert the name to 
     # lower case before importing.
     try:
-      if affix_name not in _context.keys():
-        dy_import_module_symbols(affix_name.lower())
+      dy_import_module_symbols(affix_name.lower())
     except FileInUseError, err:
       sleep(0.01)
     else:

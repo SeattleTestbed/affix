@@ -1,0 +1,238 @@
+#!python
+"""
+<Program>
+  natdecideraffix.repy
+
+<Author>
+  Monzur Muhammad
+  monzum@cs.washington.edu
+
+<Started>
+  2/1/2014
+
+<Purpose>
+  The purpose of the NAT decider Affix
+  is to determine if the current node is
+  behind a NAT or not. If the node is 
+  behind NAT, then the NatDeciderAffix
+  will load the NatPunchAffix before
+  opening up a listening socket.
+"""
+
+
+dy_import_module_symbols("baseaffix.r2py")
+dy_import_module_symbols("affixmisc.r2py")
+dy_import_module_symbols("affix_stack.r2py")
+dy_import_module_symbols("affix_exceptions.r2py")
+cachedadvertise = dy_import_module("cachedadvertise.r2py")
+
+
+
+def is_ipv4_address(address_string):
+  """Helper function to determine whether address_string is a valid 
+     IPv4 address. We check the address semantics only, not 
+     reachability or anything!"""
+  address_stringlist = address_string.split(".")
+  if len(address_stringlist) != 4:
+    # This is not an IPv4 address, it's too short or long.
+    return False
+
+  # If we reach this point, the length is reasonable.
+  # Let's check each single part.
+  octets = []
+  for octet in address_stringlist:
+    try:
+      if 0 <= int(octet) <= 255:
+	octets.append(int(octet))
+    except ValueError:
+      # Couldn't parse this alleged "octet", this is not an IPv4 address
+      return False
+  else:
+    # We went through the for loop just fine. 
+    # This is a valid IPv4 address.
+    return True
+
+
+
+
+def is_private_ipv4_address(address_string):
+  """Helper function to determine whether address_string holds a 
+     private RFC1918 IPv4 address (10/8, 172.16/12, or 192.168/16 
+     in CIDR notation) or an RFC6598 "Carrier-Grade NAT" one 
+     (100.64/10)."""
+
+  if not is_ipv4_address(address_string):
+    return False
+
+  octets = address_string.split(".")
+  if (octets[0] == "10") or \
+    (octets[0] == "172" and 16 <= int(octets[1]) <= 31) or \
+    (octets[0] == "192" and octets[1] == "168") or \
+    (octets[0] == "100" and 64 <= int(octets[1]) <= 127):
+    return True
+  else:
+    return False
+
+
+
+
+def is_node_behind_nat(myname):
+  """
+  <Purpose>
+    Check to see if the provided name (IP address, FQDN, or zenodotus 
+    name) is or corresponds to a private IP address. If so, consider 
+    this to mean we are NATted, and return True. 
+  """
+
+  # Let's find an IPv4 address that corresponds to myname.
+  # This might be trivial (myname is an address already) or 
+  # complicated (myname is a Zenodotus name that points to 
+  # another Zenodotus name that points to .... ). 
+  # Make sure our search terminates at some point.
+  retry_limit = 10
+  iteration_count = 0
+  original_name = myname
+  exceptions_list = []
+
+  while not is_ipv4_address(myname) and iteration_count < retry_limit:
+    # Try to find the IPv4 address correspoding to myname via 
+    # the advertise cache, advertise servers, and/or DNS. 
+    #
+    # Implementation note:
+    # I'm assuming here that advertise errors are recoverable, 
+    # but DNS errors are not. I do this because looping or otherwise 
+    # weirdly pointing DNS records can take very long to resolve.
+    if myname.endswith(".zenodotus.poly.edu"):
+      try:
+        # This a Zenodotus name. I should have advertised it myself 
+        # through the advertisepipe, so I'll do a local lookup first. 
+        # If local lookup doesn't succeed timely, ask the advertise servers.
+        if iteration_count <= retry_limit/2:
+          myname = cachedadvertise.lookup(myname, timeout=0)[0]
+        else:
+          myname = cachedadvertise.lookup(myname)[0]
+      except Exception, e:
+	  exceptions_list.append(("cachedadvertise.lookup(" + str(myname) + 
+            ")", type(e), str(e)))
+    else:
+      # This is some other kind of name that DNS can hopefully resolve.
+      try:
+        myname = gethostbyname(myname)
+      except Exception, e:
+        exceptions_list.append(("gethostbyname(" + str(myname) + ")", 
+          type(e), str(e)))
+        break
+
+    iteration_count += 1
+
+  # If we couldn't resolve myname after a few tries, let our caller 
+  # figure out what to do.
+  if not is_ipv4_address(myname) and iteration_count >= retry_limit:
+    raise RepyArgumentError("natdecideraffix.is_node_behind_nat could not determine NAT status of " + 
+      str(original_name) + " in " + str(iteration_count) + 
+      " tries. Last lookup/resolve result was " + str(myname) + 
+      ". Exceptions seen: " + str(exceptions_list))
+
+  # If we end up here, we resolved myname to an IPv4 address successfully.
+  if is_private_ipv4_address(myname):
+    return True
+  else:
+    return False
+
+
+
+
+class NatDeciderAffix(BaseAffix):
+  """
+  This is a class that decides whether the node is behind a NAT
+  by checking if the localip falls in the private IP address
+  category. If the node is behind NAT, the Affix will insert
+  the NatPunchAffix.
+  """
+
+  def listenforconnection(self, localip, localport):
+    """
+    <Purpose>
+      Opens up a listening socket. Adds in NatPunchAffix if
+      necessary.
+
+    <Arguments>
+      Same as Repy V2 API.
+
+    <Exceptions>
+      None
+
+    <Side Effects>
+      Modifies the Affix stack.
+
+    <Return>
+      A listening socket.
+    """
+
+    # Check if the node has a private IP address. Errors during checking
+    # that ultimatively thwart the check are collected and collectively 
+    # raised as the error message in a RepyArgumentError.
+    # XXX Issue #33 on the AFFIXs GitHub discusses how to improve the detection strategy.
+
+    enable_nat = is_node_behind_nat(localip) 
+      
+    # Add in the NatPunchAffix if we are behind NAT.
+    # If we are unable to either register or create the NatPunchAffix, 
+    # are unable to push it onto the stack, or listen on it, this is 
+    # fatal and raises an exception. (Continuing without our caller 
+    # ever noticing that this listenforconnection does not use 
+    # NAT traversal and can't return incoming connections from the 
+    # public Internet *ever* is a very bad idea.)
+
+    if enable_nat:
+      try:
+        find_and_register_affix("NatPunchAffix")
+        nat_affix = create_affix_object("NatPunchAffix", [], None)
+      except (AffixNotFoundError, AffixStackError), e:
+        raise AddressBindingError("NatDeciderAffix problem with finding/registering a NatPunchAffix: " + repr(e))
+      else:
+        # We found, registered, and instantiated the NatPunchAffix.
+        try:
+	  self.push(nat_affix)
+          tcpserversocket = self.peek().listenforconnection(localip, localport)
+        except AffixStackError, e:
+          # Pushing didn't work.
+          raise AddressBindingError("NatDeciderAffix problem pushing NatPunchAffix on the stack: " + repr(e))
+        except Exception, e:
+          # I think that pushing worked, but listening didn't. pop() and raise.
+          # XXX This is likely to broad an except!
+          self.pop()
+          raise AddressBindingError("NatDeciderAffix problem listenforconnection()ing (?) on NatPunchAffix: " + repr(e))
+        else:
+          # All is well, the NatPunchAffix listens for connection. Return it!
+          return AffixTCPServerSocket(tcpserversocket, self)
+
+    # If we reach this point, we decided we don't need a NatPunchAffix.
+    try:
+      tcpserversocket = self.peek().listenforconnection(localip, localport)
+    except AttributeError, e:
+      # Hmm, looks like the object has no peek(). It's probably a 
+      # RepyNetworkApiWrapper, not an Affix. Go without peek() then.
+      tcpserversocket = self.listenforconnection(localip, localport)
+
+    # If we reach this point, all went well
+    return AffixTCPServerSocket(tcpserversocket, self)
+
+
+
+
+
+
+
+
+  def copy(self):
+    if self.affix_context['next_affix']:
+      next_affix_copy = self.affix_context['next_affix'].copy()
+    else:
+      next_affix_copy = None
+    return NatDeciderAffix(next_affix_copy, self.affix_context['optional_args'])
+
+
+  def get_advertisement_string(self):
+    # This is a transparent Affix, so we don't advertise ourself.
+    return self.peek().get_advertisement_string()
