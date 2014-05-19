@@ -1,7 +1,7 @@
 #!python
 """
 <Program Name>
-  affixmisc.repy
+  affixmisc.r2py
 
 <Author>
   Monzur Muhammad
@@ -12,9 +12,9 @@
 
 <Purpose>
   This file contains various functionalities that are used both
-  by affix_stack.repy and AFFIX components. Many of the function-
+  by affix_stack.r2py and AFFIX components. Many of the function-
   laities in this file, such as parse_affix_string(), used to be
-  in the file affix_stack.repy. We separated out the functionalities
+  in the file affix_stack.r2py. We separated out the functionalities
   so multiple files are able to import and use them rather than
   having to rewrite the code in multiple locations.
 """
@@ -23,6 +23,11 @@
 # registered. This dictionary is shared globally by all AffixStacks
 # because we need to register each affix only once.
 AFFIX_CLASS_DICT = {}
+
+
+# We need a lock when importing Affix files to prevent any
+# race condition.
+affix_register_lock = createlock()
 
 
 
@@ -37,9 +42,9 @@ def find_and_register_affix(affix_name):
 
     Example:
         If we have a affix called ExampleAffix then the file
-        name is expected to be exampleaffix.repy
+        name is expected to be exampleaffix.r2py
 
-        ExampleAffix.repy, example_affix.repy or any other 
+        ExampleAffix.r2py, example_affix.r2py or any other 
         forms are unaccepted.
 
   <Arguments>
@@ -66,22 +71,26 @@ def find_and_register_affix(affix_name):
   if affix_name in AFFIX_CLASS_DICT.keys():
     return
 
-  # We have to do the import in a while loop in case we get the 
-  # FileInUseError. This error occurs when multiple affix stacks
-  # may be trying to load the affix.
-  while True:
+  affix_register_lock.acquire(True)
+  try:
+    # We have to do the import in a while loop in case we get the 
+    # FileInUseError. This error occurs when multiple affix stacks
+    # may be trying to load the affix.
+    while True:
     # Try to import the affix file. We convert the name to 
-    # lower case before importing.
-    try:
-      dy_import_module_symbols(affix_name.lower())
-    except FileInUseError, err:
-      sleep(0.01)
-    else:
-      break
+    # lower case before importing and add in the extension.
+      try:
+        if affix_name not in _context.keys():
+          dy_import_module_symbols(affix_name.lower() + '.r2py')
+      except FileInUseError, err:
+        sleep(0.01)
+      else:
+        break
 
-  # Register the affix.
-  AFFIX_CLASS_DICT[affix_name] = _context.copy()[affix_name]    
-          
+    # Register the affix.
+    AFFIX_CLASS_DICT[affix_name] = _context.copy()[affix_name]    
+  finally:
+    affix_register_lock.release()      
 
 
 
