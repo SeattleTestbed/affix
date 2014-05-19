@@ -1,7 +1,7 @@
 #!python
 """
 <Program Name>
-  affix_stack.repy
+  affix_stack.r2py
 
 <Author>
   Monzur Muhammad, monzum@cs.washington.edu
@@ -48,27 +48,27 @@
   In this case AffixA is able to see both AffixB and AffixC. AffixB is 
   able to see only AffixC, and AffixC is not able to see any of the affix. 
 
-  When writing a new affix, it must inherit from BaseAffix (baseaffix.repy)
+  When writing a new affix, it must inherit from BaseAffix (baseaffix.r2py)
   and the file name must be all lowercase with no space or symbole in 
-  file name. For example AffixA must have a filename affixa.repy This 
+  file name. For example AffixA must have a filename affixa.r2py This 
   particular naming convention is used so that AffixStack can dynamically 
   import all the affix files that are necessary without the user explicitly
   importing the affix files.
 
 <History>
-  03-07-2011: Renewed implementation of AffixStack.repy
+  03-07-2011: Renewed implementation of AffixStack.r2py
   09-20-2012: Changed copy() to make sure it doesn't still have old reference.
               Changed peek() to make sure it doesn't use copy().
 """
 
 
 # Import the affix exceptions.
-dy_import_module_symbols("affix_exceptions")
+dy_import_module_symbols("affix_exceptions.r2py")
 
-# Import affixmisc.repy that contains various functions
+# Import affixmisc.r2py that contains various functions
 # that are used for registering/parsing/initializing
 # AFFIX components.
-dy_import_module_symbols("affixmisc.repy")
+dy_import_module_symbols("affixmisc.r2py")
 
 # Register the base affix class before doing anything.
 # The base affix is used by all other affixs.
