@@ -3,8 +3,8 @@
 
 affixlib = dy_import_module("affixstackinterface.repy")
 
-affix_server_string = '(NoopAffix)(NatPunchAffix)'
-affix_client_string = '(NoopAffix)(NatPunchAffix)'
+affix_server_string = '(NoopAffix)(TCPRelayAffix)'
+affix_client_string = '(NoopAffix)(TCPRelayAffix)'
 listen_port = 12345
 client_port = 12346
 

@@ -20,7 +20,7 @@ dy_import_module_symbols("session.r2py")
 dy_import_module_symbols("baseaffix.r2py")
 sockettimeout = dy_import_module("sockettimeout.r2py")
 dy_import_module_symbols("affixstackinterface.r2py")
-dy_import_module_symbols("nat_forwarder_common_lib.r2py")
+dy_import_module_symbols("tcp_relay_common_lib.r2py")
 advertise = dy_import_module("advertise.r2py") # for AdvertiseError
 cachedadvertise = dy_import_module("cachedadvertise.r2py")
 random = dy_import_module("random.r2py")
@@ -35,6 +35,8 @@ _NAT_SOCKET_TIMEOUT = 10
 
 # Whether we want to print debug statements.
 _NAT_AFFIX_DEBUG_MODE = False # True
+
+_FORWARDER_AFFIX_STRING = "(TimeoutAffix,%d)" % _NAT_SOCKET_TIMEOUT
 
 
 class NatSockObj:
@@ -67,13 +69,13 @@ class NatSockObj:
     return self._server_id
 
 
-class NatPunchAffix(BaseAffix):
+class TCPRelayAffix(BaseAffix):
 
 
   def __init__(self, affix_stack = AffixStack(), optional_args = None):
     """
     <Purpose>
-      Initialize the NatPunchAffix.
+      Initialize the TCPRelayAffix.
 
     <Arguments>
       affix_stack - the affix stack underneath us.
@@ -147,14 +149,27 @@ class NatPunchAffix(BaseAffix):
     if _NAT_AFFIX_DEBUG_MODE:
       log(self, "Connecting with %s, %d, %s, %d" % (forwarder_ip, forwarder_port, localip, localport) + "\n")
 
-    sockobj = openconnection(forwarder_ip, forwarder_port, localip, localport, timeout)
+    
+    # We will be using an Affix to connect to the forwarder. The Affix string
+    # should contain the TimeoutAffix. This will ensure that any send/recv
+    # calls don't hang forever.
+    forwarder_affix = AffixStackInterface(_FORWARDER_AFFIX_STRING)
+
+    sockobj = forwarder_affix.openconnection(forwarder_ip, forwarder_port, localip, localport, timeout)
 
     # Let the forwarder know which server we want to connect to.
     server_id = "%s:%d" % (destip, destport)
-    session_sendmessage(sockobj, "%s,%s" % (CONNECT_CLIENT_TAG, server_id)) 
- 
-    confirmation_msg = session_recvmessage(sockobj)
- 
+
+    try:
+      session_sendmessage(sockobj, "%s,%s" % (CONNECT_CLIENT_TAG, server_id)) 
+      confirmation_msg = session_recvmessage(sockobj)
+    except SocketWouldBlockError:
+      # If we timeout sending or receiving connection handshake 
+      # message, then we consider this to have failed. So we raise
+      # a TimeoutError.
+      raise TimeoutError("Connection timed out while negotiating connection " +
+              "with the forwarder '%s:%d'." % (forwarder_ip, forwarder_port)) 
+
     # NOTE: We need to incorporate the timeout value in here somehow. 
     
     # If the forwarder confirms that we have successfully connected, then we 
@@ -175,7 +190,7 @@ class NatPunchAffix(BaseAffix):
       to the next layer of the affix. We open a connection to one of 
       the forwarders. Returns a tcpserversocket. Note that each time
       an application calls listenforconnection, a new AffixStack instance
-      is created with a new instance of the NatPunchAffix, therefore we
+      is created with a new instance of the TCPRelayAffix, therefore we
       can store the localip, localport globally in the instance of
       this affix.
 
@@ -237,7 +252,7 @@ class NatPunchAffix(BaseAffix):
     """
     
     if _NAT_AFFIX_DEBUG_MODE:
-      log("[NatPunchAffix] Received a getconnection call...\n")    
+      log("[TCPRelayAffix] Received a getconnection call...\n")    
 
     if nat_serversocket._closed:
       raise SocketClosedLocal("The NAT TCPServerSocket has been closed.")
@@ -257,16 +272,16 @@ class NatPunchAffix(BaseAffix):
       nat_serversocket.close()
 
       if _NAT_AFFIX_DEBUG_MODE:
-        log("[NatPunchAffix] Forwarder closed connection, raising SocketClosedLocal")
+        log("[TCPRelayAffix] Forwarder closed connection, raising SocketClosedLocal")
 
-      raise SocketClosedLocal("NatPunchAffix: This socket is no longer available for listening as we lost the connection to our listening proxy with error '" + 
+      raise SocketClosedLocal("TCPRelayAffix: This socket is no longer available for listening as we lost the connection to our listening proxy with error '" + 
         repr(e) + "'. Sorry for raising what seems to be the wrong exception.")
 
 
     # If there is an available client, we try to establish a connection.
     if nat_response == CLIENT_AVAILABLE:
       if _NAT_AFFIX_DEBUG_MODE:
-        log("[NatPunchAffix] Found available client waiting to connect.")
+        log("[TCPRelayAffix] Found available client waiting to connect.")
       return self.connect_available_client(server_id)
     else:
       raise SocketWouldBlockError("Unable to connect to any client currently.")
@@ -314,34 +329,33 @@ class NatPunchAffix(BaseAffix):
     random.random_shuffle(possible_ports)
     errorlist = []
 
+    # We will be using an Affix to connect to the forwarder. The
+    # Affix string should contain TimeoutAffix, which will ensure
+    # that send and recv calls don't hang forever.
+    forwarder_affix = AffixStackInterface(_FORWARDER_AFFIX_STRING)
+
     for localport in possible_ports:
       try:
         log(getruntime(), self, "Trying to connect_available_client using", forwarder_ip, 
           forwarder_port, getmyip(), localport, "\n")
-	new_sockobj = openconnection(forwarder_ip, forwarder_port, getmyip(), localport, _NAT_AFFIX_DEFAULT_TIMEOUT)
+	new_sockobj = forwarder_affix.openconnection(forwarder_ip, forwarder_port, getmyip(), localport, _NAT_AFFIX_DEFAULT_TIMEOUT)
         break
       except (AddressBindingError, DuplicateTupleError, AlreadyListeningError, 
         CleanupInProgressError, ConnectionRefusedError, TimeoutError), err:
         errorlist.append(repr(err))
     else: # We didn't succeed connecting via any of our local ports
       if _NAT_AFFIX_DEBUG_MODE:
-        log("[NatPunchAffix] Cannot accept anymore clients due to exhausted local ports.")
-      raise ResourceExhaustedError("NatPunchAffix unable to connect to a client currently. Errors encountered: " + str(errorlist))
-
-    # If we reach this, we have a connection to a forwarder.
-    # Use a sockettimeout object in order to perform socket.send and socket.recv
-    # so we don't hang forever and continue on if it takes too long.
-    timeout_socket = sockettimeout.timeout_socket(new_sockobj, 
-      timeout=_NAT_SOCKET_TIMEOUT)
+        log("[TCPRelayAffix] Cannot accept anymore clients due to exhausted local ports.")
+      raise ResourceExhaustedError("TCPRelayAffix unable to connect to a client currently. Errors encountered: " + str(errorlist))
 
     # Request the Nat Forwarder to connect a client to this new socket that
     # we just opened up. Then we check if we were successfully connected to
     # a client
     try:
-      session_sendmessage(timeout_socket, CONNECT_SERVER_TAG + ',' + server_id)
-      response = session_recvmessage(timeout_socket)
-    except sockettimeout.SocketTimeoutError, err:
-      raise SocketWouldBlockError("Unable to connect to any client due to timeout when requesting for connection for server id: %s. %s" % 
+      session_sendmessage(new_sockobj, CONNECT_SERVER_TAG + ',' + server_id)
+      response = session_recvmessage(new_sockobj)
+    except SocketWouldBlockError, err:
+      raise TCPServerSocketInvalidError("Unable to connect to any client due to timeout when requesting for connection for server id: %s. %s" % 
         (server_id, repr(err)))
 
     # We successfully made a connection! So we return the socket along with
@@ -403,6 +417,9 @@ class NatPunchAffix(BaseAffix):
     # The function lookup_address is currently defined in affix_wrapper_lib
     localip = lookup_address(localip)
 
+    # We will be using an Affix to connect to the forwarder.
+    forwarder_affix = AffixStackInterface(_FORWARDER_AFFIX_STRING)
+
     # Now that we have a list of forwarders, try to connect to each one until
     # we successfully do. 
     for cur_forwarder in forwarder_list:
@@ -415,7 +432,7 @@ class NatPunchAffix(BaseAffix):
       forwarder_port = int(forwarder_port_str)
 
       try:
-        sockobj = openconnection(forwarder_ip, forwarder_port, localip, localport, _NAT_AFFIX_DEFAULT_TIMEOUT)
+        sockobj = forwarder_affix.openconnection(forwarder_ip, forwarder_port, localip, localport, _NAT_AFFIX_DEFAULT_TIMEOUT)
       # MMM: Should we also catch RepyArgumentError and AddressbindingError here? Currently we raise those.
       except (DuplicateTupleError, AlreadyListeningError, CleanupInProgressError, 
               ConnectionRefusedError, TimeoutError, InternetConnectivityError), err:
@@ -424,7 +441,7 @@ class NatPunchAffix(BaseAffix):
         continue
       except Exception, err:
         if _NAT_AFFIX_DEBUG_MODE:
-          log(self, "NatPunchAffix found unexpected error: %s %s\n. Local Address is: '%s:%d'. Desired forwarder and server_ip: %s:%d, %s" % 
+          log(self, "TCPRelayAffix found unexpected error: %s %s\n. Local Address is: '%s:%d'. Desired forwarder and server_ip: %s:%d, %s" % 
             (str(type(err)), str(err), localip, localport, forwarder_ip, 
             forwarder_port, server_id))
         raise
@@ -436,17 +453,13 @@ class NatPunchAffix(BaseAffix):
           register_serv_msg = SERVER_REGISTER + ',' + str(server_id)
 
           if _NAT_AFFIX_DEBUG_MODE:
-            log(self, "NatPunchAffix successfully connected to forwarder '%s:%d'\n" % (forwarder_ip, forwarder_port))
-            log(self, "NatPunchAffix requesting to register with msg: %s\n" % register_serv_msg)
+            log(self, "TCPRelayAffix successfully connected to forwarder '%s:%d'\n" % (forwarder_ip, forwarder_port))
+            log(self, "TCPRelayAffix requesting to register with msg: %s\n" % register_serv_msg)
           # Once we are connected, 
 
-          # Use a sockettimeout object in order to perform socket.send and socket.recv
-          # so we don't hang forever and continue on if it takes too long.
-          timeout_socket = sockettimeout.timeout_socket(sockobj, 
-            timeout=_NAT_SOCKET_TIMEOUT)
 
           try:
-            session_sendmessage(timeout_socket, register_serv_msg)
+            session_sendmessage(sockobj, register_serv_msg)
             
             # Make sure we are connected to the forwarder. We do this by sending
             # the forwarder the unique ID for this particular connection. If the
@@ -454,10 +467,10 @@ class NatPunchAffix(BaseAffix):
             # return the socket object. It is possible that the forwarder will 
             # return other messages such as SERVER_FULL or CONNECTION_REFUSED msg.
             # In which case we move on to the next forwarder.
-            confirmation_msg = session_recvmessage(timeout_socket)
-          except sockettimeout.SocketTimeoutError, err:
+            confirmation_msg = session_recvmessage(sockobj)
+          except SocketWouldBlockError, err:
             if _NAT_AFFIX_DEBUG_MODE:
-              log(self, "NatPunchAffix timed out while registering to forwarder '%s:%d'. %s\n" % (forwarder_ip, forwarder_port, str(err)))
+              log(self, "TCPRelayAffix timed out while registering to forwarder '%s:%d'. %s\n" % (forwarder_ip, forwarder_port, str(err)))
             # If we timeout trying to register to a NAT forwarder, we continue
             # and move on to the next forwarder.
             continue
@@ -498,7 +511,7 @@ class NatPunchAffix(BaseAffix):
 
     optional_args_copy = self.affix_context['optional_args']
 
-    affix_copy = NatPunchAffix(affix_stack_copy, optional_args_copy)
+    affix_copy = TCPRelayAffix(affix_stack_copy, optional_args_copy)
     affix_copy.default_forwarder = self.default_forwarder
 
     return affix_copy
@@ -508,7 +521,7 @@ class NatPunchAffix(BaseAffix):
 
   def get_advertisement_string(self):
     """
-    The NatPunchAffix will advertise the forwarder it is using if it has
+    The TCPRelayAffix will advertise the forwarder it is using if it has
     a default forwarder. Ther server should always fill this in when 
     doing tcpserver_getconnection.
     """
@@ -516,9 +529,9 @@ class NatPunchAffix(BaseAffix):
       log(self, "Default forwarder is: " + str(self.default_forwarder) + "\n")
     if self.default_forwarder:
       forwarder_ip, forwarder_port = self.default_forwarder
-      nat_ad_string = "(NatPunchAffix,%s:%d)" % (forwarder_ip, forwarder_port)
+      nat_ad_string = "(TCPRelayAffix,%s:%d)" % (forwarder_ip, forwarder_port)
     else:
-      nat_ad_string = "(NatPunchAffix)"
+      nat_ad_string = "(TCPRelayAffix)"
 
     return nat_ad_string + self.peek().get_advertisement_string()
 

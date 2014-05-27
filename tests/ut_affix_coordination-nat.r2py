@@ -3,7 +3,7 @@
 
 affixlib = dy_import_module("affixstackinterface.repy")
 
-affix_server_string = '(CoordinationAffix)(NatPunchAffix)'
+affix_server_string = '(CoordinationAffix)(TCPRelayAffix)'
 affix_client_string = '(CoordinationAffix)'
 listen_port = 12345
 client_port = 12346

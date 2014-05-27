@@ -19,6 +19,8 @@
   having to rewrite the code in multiple locations.
 """
 
+dy_import_module_symbols("affix_exceptions.r2py")
+
 # A dictionary that holds all the affix objects that have been
 # registered. This dictionary is shared globally by all AffixStacks
 # because we need to register each affix only once.
