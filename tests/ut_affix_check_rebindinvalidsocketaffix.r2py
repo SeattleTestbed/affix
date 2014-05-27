@@ -56,10 +56,12 @@ listenport = 12345
 # Open up a serversocket and call getconnection.
 serversock = myaffix.listenforconnection(getmyip(), listenport)
 
-try:
-  serversock.getconnection()
-except SocketWouldBlockError:
-  pass
+for i in range(3):
+  try:
+    log(str(serversock) +'\n')
+    serversock.getconnection()
+  except SocketWouldBlockError:
+    sleep(0.1)
 
 if mycontext['num_listenforconnection'] == 2:
    log('PASS\n') 
