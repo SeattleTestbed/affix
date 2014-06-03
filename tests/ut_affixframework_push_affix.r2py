@@ -1,0 +1,52 @@
+#pragma repy restrictions.affix dylink.r2py
+#pragma out PASS
+
+# This is a simple test that checks to make sure that
+# find_and_register_affix() function works.
+
+affixstack = dy_import_module("affix_stack.r2py")
+noopaffix = dy_import_module("noopaffix.r2py")
+wrapperlib = dy_import_module("affix_wrapper_lib.r2py")
+
+
+# Create a new empty stack.
+my_stack = affixstack.AffixStack()
+
+# We are going to push 5 instances of Noop
+# Affix on top of our stack.
+
+cur_affix = noopaffix.NoopAffix(None)
+
+# We have already created an Affix outside
+# the loop, so we only need to add in 4 more.
+for i in range(4):
+  # Create a new Noop Affix and push it
+  # on the stack.
+  new_affix = noopaffix.NoopAffix(cur_affix)
+  my_stack.push(new_affix)
+  cur_affix = new_affix
+  
+
+affix_count = 0
+cur_affix = my_stack.peek()
+
+# We will loop through the Affix stack until we reach
+# the bottom of the stack. We also keep count of how
+# many Affixes we have seen so far.
+while cur_affix:
+  affix_count += 1
+  
+  # If we have reached the bottom of the stack, we will break.
+  if isinstance(cur_affix, wrapperlib.RepyNetworkApiWrapper):
+    break
+
+  cur_affix = cur_affix.peek()
+
+
+# Make sure there were 5 Affixes on the stack.
+if affix_count == 5:
+  log("PASS\n")
+else:
+  log("Unexpected number of Affixes on the Affix stack. Expecting 5 Affix, found %d Affix.\n" % affix_count)
+
+

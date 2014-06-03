@@ -1,0 +1,32 @@
+#pragma repy restrictions.affix dylink.r2py
+#pragma out PASS
+
+affixmisc = dy_import_module("affixmisc.r2py")
+
+not_string_arg = 100
+
+# Test to make sure the function create_affix_object throws
+# an error when passing in a non-string argument as the 
+# Affix name.
+try:
+  affixmisc.create_affix_object(not_string_arg, [], None)
+except AssertionError, err:
+  if str(err) == "Bad arg type. affix_name must be a string.":
+    pass
+  else:
+    log("Test Failed! Did not catch bad string argument for first argument.")
+
+
+# Test to make sure the function create_affix_object throws
+# an error when passing in a non-list argument as the 
+# Affix arguments.
+try:
+  affixmisc.create_affix_object("SomeValidAffixName", "foo", None)
+except AssertionError, err:
+  if str(err) == "Bad arg type. affix_args must be a list.":
+    pass
+  else:
+    log("Test Failed! Did not catch bad list argument for second argument.")
+
+
+log("PASS\n")
