@@ -192,12 +192,14 @@ def create_client_handler(remote_ip, remote_port, client_socket):
       # the control connection; let's open up a connection to the 
       # desired port.
       allowed_ports = list(getresources()[0]["connport"])
+      random.random_shuffle(allowed_ports)
       for local_port in allowed_ports:
 	try:
           logtn("Trying to connect to client", remote_ip, "on port", 
-              desired_port, "from", getmyip(), "on port", local_port)
-	  probe_socket = openconnection(remote_ip, desired_port, 
-	      getmyip(), local_port, 5)
+              desired_port, "from", getmyip(), "port", local_port)
+          # Again, use a timeoutsocket to protect against malicious clients
+	  probe_socket = sockettimeout.timeout_openconnection(remote_ip, 
+              desired_port, getmyip(), local_port, 10)
           logtn("Connected!")
           break
 	except (AddressBindingError, DuplicateTupleError, 
@@ -210,7 +212,7 @@ def create_client_handler(remote_ip, remote_port, client_socket):
 	  session.session_sendmessage(client_socket, 
 	      "Connection from " + getmyip() + ":" + str(local_port) + 
 	      " to " + remote_ip + ":" + str(desired_port) + 
-	      " refused. Giving up.")
+	      " refused (or timed out). Giving up.")
 	  client_socket.close()
           raise
 
@@ -240,6 +242,17 @@ def create_client_handler(remote_ip, remote_port, client_socket):
       # This is the catch-all clause for things we can't sensibly handle
       logtn("Caught error when serving client", remote_ip, "on port", 
           remote_port, " -- ", repr(e))
+      # Close down all of our sockets. (We need to try/except here 
+      # as the sockets needn't exist or could have been closed on the 
+      # remote side already).
+      try:
+        client_socket.close()
+      except:
+        pass
+      try:
+        probe_socket.close()
+      except:
+        pass
           
   # Return the inner function that uses the outer function's parameters
   return client_handler
@@ -283,8 +296,11 @@ def start_server(server_port=None):
 
   while True:
     try:
-      (remote_ip, remote_port, client_socket) = server_socket.getconnection()
+      (remote_ip, remote_port, raw_client_socket) = server_socket.getconnection()
       logtn("Got connection from", remote_ip, remote_port)
+      # Enforce timeout on the connection so that evil clients 
+      # can't block us indefinitely
+      client_socket = sockettimeout.timeout_socket(raw_client_socket)
       client_handler = create_client_handler(remote_ip, remote_port, 
         client_socket)
       try:
