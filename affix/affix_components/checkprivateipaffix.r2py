@@ -134,22 +134,8 @@ def is_node_behind_nat(myname, myport=None):
       ". Exceptions seen: " + str(exceptions_list))
 
   # If we end up here, we resolved myname to an IPv4 address successfully.
-  if is_private_ipv4_address(myname):
-    return True
+  return is_private_ipv4_address(myname)
 
-  elif:
-    # Now that we have determined that we do not have a private 
-    # address, we have to determine if there are any firewalls
-    # blocking incoming connection on our port.
-    # If a port number was not provided then this case does not
-    # matter and we assume that we are not behind NAT.
-    if not myport:
-      return False
-
-    # Find a list of forwarders.
-
-  else:
-    return False
 
 
 
