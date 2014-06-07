@@ -1,6 +1,6 @@
 """
 <Program>
-  affix_wrapper_lib.repy
+  affix_wrapper_lib.r2py
 
 <Author>
   Monzur Muhammad
@@ -10,7 +10,6 @@
   wrapper library that are used by the Affix framework.
 """  
 
-cachedadvertise = dy_import_module('cachedadvertise.r2py')
 
 DEBUG_MODE = False
 zenodotus_subdomain = 'zenodotus.poly.edu'
@@ -322,6 +321,13 @@ def lookup_address(hostname, lookup_depth=0):
     return hostname
 
   if hostname.endswith(zenodotus_subdomain):
+    # We import cachedadvertise in the function rather than
+    # at the top of the file to address ticket #1407. This
+    # ensures that sockettimeout.repy is only imported when
+    # we call these functionalities. This will allow us to
+    # overload the Repy network API calls properly in 
+    # applications that use Affixes.
+    cachedadvertise = dy_import_module('cachedadvertise.r2py')
     try:
       # If we have found a value, we recursively check it
       # in the case of one zenodotus address pointing to 
@@ -329,9 +335,11 @@ def lookup_address(hostname, lookup_depth=0):
       # Increase the depth before doing the next lookup.
       lookup_depth += 1
       return lookup_address(cachedadvertise.lookup(hostname)[0], lookup_depth)
-    except NetworkAddressError:
+    except (NetworkAddressError, IndexError):
       # If we get a NetworkAddressError, there isn't much we can
       # do, so we just return.
+      # Similarly, if we get an IndexError then we failed to do a 
+      # lookup for the hostname.
       return hostname
 
 

@@ -1,0 +1,191 @@
+#!python
+"""
+<Purpose>
+  The purpose of TimeoutAffix is to allow users
+  to set a timeout for their networking calls. 
+  Repy V2 API sockets by default are non-blocking,
+  however this Affix turns them into blocking sockets
+  with a timeout. The Affix depends and uses the
+  socketimeout library.
+
+<Author>
+  Monzur Muhammad
+  monzum@cs.washington.edu
+
+<Started>
+  14 March, 2014 (Happy Pi Day!)
+
+<History>
+  03-14-2014: Initial implementation of the library.
+"""
+
+# Import the necessary libraries for this Affix.
+baseaffix = dy_import_module('baseaffix.repy')
+affix_wrapper = dy_import_module('affix_wrapper_lib.repy')
+
+
+sockettimeout = dy_import_module('sockettimeout.repy')
+# Note that we can't currently use dy_import_module
+# because of ticket https://seattle.poly.edu/ticket/1386
+#dy_import_module_symbols('sockettimeout.repy')
+
+
+class TimeoutAffix(baseaffix.BaseAffix):
+
+  def __init__(self, next_affix=None, optional_args=None):
+    """
+    Initialize the TimeoutAffix with the provided optional
+    argument (timeout). If no timeout is supplied, than 
+    we will default to a timeout of 0, or no timeout.
+    """
+
+    if optional_args:
+      assert(isinstance(optional_args, list)), "Provided optional args is not of type 'list'."
+
+      # Uses must provide a timeout if they provide an optional
+      # argument. Furthermore, the user may provide a filename
+      # for the use of Debug Mode.
+      # MMM: Currently disabling the file logging option until
+      # the Logger module is ready.
+      assert(len(optional_args) == 1), "Bad optional arg. Must provide a timeout value."
+
+      try:
+        self.timeout = int(optional_args[0])
+      except ValueError:
+        raise AffixInternalError("Timeout provided is not of tyep int.")
+
+
+    baseaffix.BaseAffix.__init__(self, next_affix, optional_args)
+
+
+
+
+  # ====================== TCP Connections =======================
+  def listenforconnection(self, localip, localport):
+    """
+    <Purpose>
+      This call creates a listening socket with a timeout
+      setting. The sockettimeout library is used to wrap
+      the socket with the _timeout_server_socket object.
+
+    <Arguments>
+      Same as the Repy V2 API.
+
+    <Side Effects>
+      Sockets will be blocking sockets instead of non-blocking
+      as expected by the Repy V2 API.
+
+    <Exceptions>
+      Same exception as the Repy V2 API.
+
+    <Return>
+      A server socket that can be used to accept incoming
+      connections. The server socket will have a timeout.
+    """
+
+    # Once we have retrieved the socket object from the next Affix
+    # layer, we wrap it in a timeout socket like object.
+    #
+    # MMM: The timeout socket turns the socket into a blocking socket.
+    # Furthermore, the library raises a SocketTimeoutError if it times
+    # out. Both of these behaviors are not part of the RepyV2 API and
+    # we are kind of breaking semantics here. One option would be to
+    # convert the SocketTimeoutError into a SocketWouldBlockError.
+    next_layer_socket = self.peek().listenforconnection(localip, localport)
+    timeout_socket = sockettimeout.timeout_server_socket(next_layer_socket, self.timeout)
+
+    return affix_wrapper.AffixTCPServerSocket(timeout_socket, self)
+
+
+
+
+
+  def openconnection(self, destip, destport, localip, localport, timeout):
+    """
+    <Purpose>
+      This call creates an outgoing socket connection and wraps
+      it in a socket timeout like object to ensure any future
+      send() and recv() calls have a timeout.
+
+    <Arguments>
+      Same arguments as Repy V2 API
+
+    <Side Effects>
+      The resturning socket will be a blocking socket.
+
+    <Exception>
+      Same exceptions as Repy V2 API.
+  
+    <Return>
+      A socket like object with a timeout set.
+    """
+
+    # Retrieve the next next layer socket and wrap it in a
+    # socket timeout object from the sockettimeout library.
+    next_layer_socket = self.peek().openconnection(destip, destport, 
+                          localip, localport, timeout)
+
+
+    # MMM: The timeout socket turns the socket into a blocking socket.
+    # Furthermore, the library raises a SocketTimeoutError if it times
+    # out. Both of these behaviors are not part of the RepyV2 API and
+    # we are kind of breaking semantics here. One option would be to
+    # convert the SocketTimeoutError into a SocketWouldBlockError.
+    timeout_socket = sockettimeout.timeout_socket(next_layer_socket, timeout)
+
+    return affix_wrapper.AffixSocket(timeout_socket, self)
+
+
+
+
+###################################################################
+# We will overwrite the calls tcpserversocket.getconnection(),
+# socket.send() and socket.recv() and catch any SocketTimeoutError.
+# We replace any SocketTimeoutErrors with SocketWouldBlockError to
+# ensure that the Affix maintains it's semantics for each of the
+# networking API calls.
+###################################################################
+
+  def tcpserversocket_getconnection(self, tcpserversocket):
+    # Following the protocol of how getconnection() is supposed
+    # to be implemented, we will make a copy ourselves before
+    # calling getconnection.
+    this_affix_copy = self.copy()
+    try:
+      (remoteip, remoteport, repy_socket) = this_affix_copy.peek().tcpserversocket_getconnection(tcpserversocket)
+    except sockettimeout.SocketTimeoutError, err:
+      raise SocketWouldBlockError(err)
+
+    return (remoteip, remoteport, affix_wrapper.AffixSocket(repy_socket, self))
+
+
+
+  def socket_send(self, socket, msg):
+    try:
+      return self.peek().socket_send(socket,msg)
+    except sockettimeout.SocketTimeoutError, err:
+      raise SocketWouldBlockError(err)
+
+
+
+  def socket_recv(self, socket, bytes):
+    try:
+      self.peek().socket_recv(socket, bytes)
+    except sockettimeout.SocketTimeoutError, err:
+      raise SocketWouldBlockError(err)
+
+
+
+# Methods that need to be overwritten for the Affix framework.
+
+  def copy(self):
+    if self.affix_context['next_affix']:
+      next_affix_copy = self.affix_context['next_affix'].copy()
+    else:
+      next_affix_copy = None
+    return TimeoutAffix(next_affix_copy, self.affix_context['optional_args'])
+
+
+  
+  def get_advertisement_string(self):
+    return self.peek().get_advertisement_string()

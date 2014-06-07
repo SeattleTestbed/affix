@@ -1,0 +1,12 @@
+#pragma repy restrictions.affix dylink.r2py
+#pragma out PASS
+
+affixmisc = dy_import_module("affixmisc.r2py")
+affixexception = dy_import_module("affix_exceptions.r2py")
+
+try:
+  affixmisc.create_affix_object("InvalidAffix", [], None)
+except affixexception.AffixNotFoundError:
+  pass
+
+log("PASS\n")

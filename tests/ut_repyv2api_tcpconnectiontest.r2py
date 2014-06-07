@@ -26,7 +26,7 @@ random = dy_import_module("random.r2py")
 
 # Configure server-listen and client-source ports dynamically. 
 # (The server IP:port combination is used as an advertise key for 
-# the NatPunchAffix. We don't want to advertise Affix info under 
+# the TCPRelayAffix. We don't want to advertise Affix info under 
 # a key that has been used in a previous run of this script.)
 available_ports = list(getresources()[0]["connport"])
 random.random_shuffle(available_ports)

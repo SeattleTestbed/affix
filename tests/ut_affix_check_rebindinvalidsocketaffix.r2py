@@ -1,0 +1,67 @@
+#pragma repy restrictions.affix dylink.r2py
+#pragma out PASS
+
+baseaffix = dy_import_module("baseaffix.r2py")
+affixlib = dy_import_module("affixstackinterface.r2py")
+
+# Keeps track of how many times we have invoked the 
+# listenforconnection call in the bad Affix. By the
+# end of the test, we should have called it twice.
+# Once for the original listenforconnection call,
+# and a second time through getconnection, when
+# we raise a TCPServerSocketInvalidError.
+mycontext['num_listenforconnection'] = 0
+
+class BadAffix(baseaffix.BaseAffix):
+
+  def listenforconnection(self, localip, localport):
+    mycontext['num_listenforconnection'] += 1
+    next_layer_socket = self.peek().listenforconnection(localip, localport)
+    return baseaffix.AffixTCPServerSocket(next_layer_socket, self)
+
+  def tcpserversocket_getconnection(self, tcpserversocket):
+    # The first time getconnection is called, we raise 
+    # the TCPServerSocketInvalidError.
+    if mycontext['num_listenforconnection'] == 1:
+      raise TCPServerSocketInvalidError
+
+    this_affix_copy = self.copy()
+    (remote_ip, remote_port, repy_socket) = this_affix_copy.peek().tcpserversocket_getconnection(tcpserversocket)
+
+    return (remote_ip, remote_port, AffixSocket(repy_socket, self))
+
+
+  def copy(self):
+    if self.affix_context['next_affix']:
+      next_affix_copy = self.affix_context['next_affix'].copy()
+    else:
+      next_affix_copy = None
+    return BadAffix(next_affix_copy, self.affix_context['optional_args'])
+
+
+  
+  def get_advertisement_string(self):
+    return '(BadAffix)' + self.peek().get_advertisement_string()
+
+
+
+
+# We are going to manually register our BadAffix.
+affixlib.AFFIX_CLASS_DICT['BadAffix'] = BadAffix
+
+myaffix = affixlib.AffixStackInterface('(RebindInvalidSocketAffix)(BadAffix)')
+
+listenport = 12345
+
+# Open up a serversocket and call getconnection.
+serversock = myaffix.listenforconnection(getmyip(), listenport)
+
+for i in range(3):
+  try:
+    log(str(serversock) +'\n')
+    serversock.getconnection()
+  except SocketWouldBlockError:
+    sleep(0.1)
+
+if mycontext['num_listenforconnection'] == 2:
+   log('PASS\n') 

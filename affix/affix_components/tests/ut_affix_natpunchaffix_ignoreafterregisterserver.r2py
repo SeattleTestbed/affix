@@ -1,14 +1,14 @@
 """
 Connect to myself using a NAT forwarder also hosted by this script. 
-Check that the NatPunchAffix in use (rather than the client or server 
+Check that the TCPRelayAffix in use (rather than the client or server 
 thread) detects when the server stops replying to CHECK_APPEND_CONN_REQUESTs 
-that are sent when the server calls the NatPunchAffix'ed getconnection().
+that are sent when the server calls the TCPRelayAffix'ed getconnection().
 
 This is implemented by making the NAT forwarder sit and not call recv() 
 on the control connection socket after the server has registered.
 
 XXX Ideally, the control connection would time out after a while, but the 
-XXX current NatPunchAffix doesn't include that functionality.
+XXX current TCPRelayAffix doesn't include that functionality.
 
 Note: Including the NAT forwarder code (rather than importing it 
 and overriding parts) is a really ugly hack. This needs to be done 
@@ -25,13 +25,13 @@ random.random_shuffle(available_ports)
 
 
 ########################################################################
-# Begin include nat_forwarder.r2py 
+# Begin include tcp_relay.r2py 
 # (linkleonard's commit 0c453828d973ff851e3fd967773bde44e11e842b)
 # Modified to sit there and remain silent once the server is connected.
 
 """
 <Program Name>
-  nat_forwarder.r2py
+  tcp_relay.r2py
 
 <Purpose>
   The purpose of this program is to act as a nat forwarder.
@@ -46,15 +46,15 @@ random.random_shuffle(available_ports)
   monzum@cs.washington.edu
 
 <Usage>
-  python repy.py RESTRICTION_FILE dylink.repy nat_forwarder.repy TCP_PORT 
+  python repy.py RESTRICTION_FILE dylink.repy tcp_relay.repy TCP_PORT 
     [ NAT_FORWARDER_KEY ]
 """
 
 dy_import_module_symbols("session.r2py")
 advertisepipe = dy_import_module("advertisepipe.r2py")
 dy_import_module_symbols("affixstackinterface.r2py")
-dy_import_module_symbols("nat_forwarder_common_lib.r2py")
-iplib = dy_import_module("natdecideraffix.r2py")
+dy_import_module_symbols("tcp_relay_common_lib.r2py")
+iplib = dy_import_module("checkprivateipaffix.r2py")
 time = dy_import_module("time.r2py")
 
 
@@ -644,14 +644,14 @@ if callfunc == 'initialize':
   logmsg("MAX_SERVERS: " + str(MAX_SERVERS) +
     ", MAX_CLIENTS_PER_SERVER: " + str(MAX_CLIENTS_PER_SERVER), INFO_MSG)
 
-# End include nat_forwarder.r2py
+# End include tcp_relay.r2py
 ########################################################################
 
 
 
 log("Setting up NAT forwarder.\n")
-nat_forwarder_port = available_ports.pop()
-mycontext['listenport_tcp'] = nat_forwarder_port
+tcp_relay_port = available_ports.pop()
+mycontext['listenport_tcp'] = tcp_relay_port
 createthread(tcp_forwarder_listener)
 log("NAT forwarder started.\n")
 
@@ -662,8 +662,8 @@ dy_import_module_symbols("affixstackinterface.r2py")
 
 # Set up the Affix stack to use, and override the network calls we need.
 # We'll host the forwarder ourselves for this test.
-affix_object = AffixStackInterface("(NatPunchAffix," + getmyip() + ":" + 
-    str(nat_forwarder_port) + ")")
+affix_object = AffixStackInterface("(TCPRelayAffix," + getmyip() + ":" + 
+    str(tcp_relay_port) + ")")
 listenforconnection = affix_object.listenforconnection
 openconnection = affix_object.openconnection
 

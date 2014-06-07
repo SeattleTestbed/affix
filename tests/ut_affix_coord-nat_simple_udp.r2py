@@ -1,6 +1,6 @@
 """
 This is a simple test that sets up a server with the Coordination
-and NatPunchAffix and sends a string of message from the client
+and TCPRelayAffix and sends a string of message from the client
 to the server through the forwarder.
 """
 #pragma repy restrictions.affix dylink.repy
@@ -8,4 +8,4 @@ to the server through the forwarder.
 
 dy_import_module_symbols("ut_repyv2api_tcpconnectiontest.r2py")
 
-launch_basic_tcp_test("(CoordinationAffix)(NatPunchAffix)", "(CoordinationAffix)")
+launch_basic_tcp_test("(CoordinationAffix)(TCPRelayAffix)", "(CoordinationAffix)")

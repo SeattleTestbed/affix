@@ -1,7 +1,7 @@
 #!python
 """
 <Program>
-  natdecideraffix.repy
+  checkprivateipaffix.repy
 
 <Author>
   Monzur Muhammad
@@ -14,8 +14,8 @@
   The purpose of the NAT decider Affix
   is to determine if the current node is
   behind a NAT or not. If the node is 
-  behind NAT, then the NatDeciderAffix
-  will load the NatPunchAffix before
+  behind NAT, then the CheckPrivateIPAffix
+  will load the TCPRelayAffix before
   opening up a listening socket.
 """
 
@@ -76,7 +76,7 @@ def is_private_ipv4_address(address_string):
 
 
 
-def is_node_behind_nat(myname):
+def is_node_behind_nat(myname, myport=None):
   """
   <Purpose>
     Check to see if the provided name (IP address, FQDN, or zenodotus 
@@ -128,32 +128,30 @@ def is_node_behind_nat(myname):
   # If we couldn't resolve myname after a few tries, let our caller 
   # figure out what to do.
   if not is_ipv4_address(myname) and iteration_count >= retry_limit:
-    raise RepyArgumentError("natdecideraffix.is_node_behind_nat could not determine NAT status of " + 
+    raise RepyArgumentError("checkprivateipaffix.is_node_behind_nat could not determine NAT status of " + 
       str(original_name) + " in " + str(iteration_count) + 
       " tries. Last lookup/resolve result was " + str(myname) + 
       ". Exceptions seen: " + str(exceptions_list))
 
   # If we end up here, we resolved myname to an IPv4 address successfully.
-  if is_private_ipv4_address(myname):
-    return True
-  else:
-    return False
+  return is_private_ipv4_address(myname)
 
 
 
 
-class NatDeciderAffix(BaseAffix):
+
+class CheckPrivateIPAffix(BaseAffix):
   """
   This is a class that decides whether the node is behind a NAT
   by checking if the localip falls in the private IP address
   category. If the node is behind NAT, the Affix will insert
-  the NatPunchAffix.
+  the TCPRelayAffix.
   """
 
   def listenforconnection(self, localip, localport):
     """
     <Purpose>
-      Opens up a listening socket. Adds in NatPunchAffix if
+      Opens up a listening socket. Adds in TCPRelayAffix if
       necessary.
 
     <Arguments>
@@ -176,8 +174,8 @@ class NatDeciderAffix(BaseAffix):
 
     enable_nat = is_node_behind_nat(localip) 
       
-    # Add in the NatPunchAffix if we are behind NAT.
-    # If we are unable to either register or create the NatPunchAffix, 
+    # Add in the TCPRelayAffix if we are behind NAT.
+    # If we are unable to either register or create the TCPRelayAffix, 
     # are unable to push it onto the stack, or listen on it, this is 
     # fatal and raises an exception. (Continuing without our caller 
     # ever noticing that this listenforconnection does not use 
@@ -186,28 +184,28 @@ class NatDeciderAffix(BaseAffix):
 
     if enable_nat:
       try:
-        find_and_register_affix("NatPunchAffix")
-        nat_affix = create_affix_object("NatPunchAffix", [], None)
+        find_and_register_affix("TCPRelayAffix")
+        nat_affix = create_affix_object("TCPRelayAffix", [], None)
       except (AffixNotFoundError, AffixStackError), e:
-        raise AddressBindingError("NatDeciderAffix problem with finding/registering a NatPunchAffix: " + repr(e))
+        raise AddressBindingError("CheckPrivateIPAffix problem with finding/registering a TCPRelayAffix: " + repr(e))
       else:
-        # We found, registered, and instantiated the NatPunchAffix.
+        # We found, registered, and instantiated the TCPRelayAffix.
         try:
 	  self.push(nat_affix)
           tcpserversocket = self.peek().listenforconnection(localip, localport)
         except AffixStackError, e:
           # Pushing didn't work.
-          raise AddressBindingError("NatDeciderAffix problem pushing NatPunchAffix on the stack: " + repr(e))
+          raise AddressBindingError("CheckPrivateIPAffix problem pushing TCPRelayAffix on the stack: " + repr(e))
         except Exception, e:
           # I think that pushing worked, but listening didn't. pop() and raise.
           # XXX This is likely to broad an except!
           self.pop()
-          raise AddressBindingError("NatDeciderAffix problem listenforconnection()ing (?) on NatPunchAffix: " + repr(e))
+          raise AddressBindingError("CheckPrivateIPAffix problem listenforconnection()ing (?) on TCPRelayAffix: " + repr(e))
         else:
-          # All is well, the NatPunchAffix listens for connection. Return it!
+          # All is well, the TCPRelayAffix listens for connection. Return it!
           return AffixTCPServerSocket(tcpserversocket, self)
 
-    # If we reach this point, we decided we don't need a NatPunchAffix.
+    # If we reach this point, we decided we don't need a TCPRelayAffix.
     try:
       tcpserversocket = self.peek().listenforconnection(localip, localport)
     except AttributeError, e:
@@ -230,7 +228,7 @@ class NatDeciderAffix(BaseAffix):
       next_affix_copy = self.affix_context['next_affix'].copy()
     else:
       next_affix_copy = None
-    return NatDeciderAffix(next_affix_copy, self.affix_context['optional_args'])
+    return CheckPrivateIPAffix(next_affix_copy, self.affix_context['optional_args'])
 
 
   def get_advertisement_string(self):

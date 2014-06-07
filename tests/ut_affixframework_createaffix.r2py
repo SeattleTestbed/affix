@@ -1,0 +1,41 @@
+#pragma repy restrictions.affix dylink.r2py
+#pragma out PASS
+
+# This is a simple test that checks to make sure that
+# find_and_register_affix() function works.
+
+affixmisc = dy_import_module("affixmisc.r2py")
+
+# Create a simple class object with just the constructor.
+data = """class TmpAffix:\n  def __init__(self, affix_object, args):\n    pass"""
+
+
+def register_affix():
+  # Register the new affix we just created.
+  affixmisc.find_and_register_affix("TmpAffix")
+
+
+
+# Create a temporary file and write the data for the
+# temporary affix in it.
+tmpfile = openfile('tmpaffix.r2py', True)
+try:
+  tmpfile.writeat(data, 0)
+  tmpfile.close()
+
+
+  # Register the Affix, so we can use it.
+  register_affix()
+
+  myaffix = affixmisc.create_affix_object('TmpAffix', [],  None)
+
+  mytmpaffix = dy_import_module("tmpaffix.r2py")
+
+  if isinstance(myaffix, mytmpaffix.TmpAffix):
+    # We are done!
+    log('PASS\n')
+  else:
+    log("The created Affix object is not of type TmpAffix as we would expect.")
+finally:
+  # Once we are done, we remove the temporary file.
+  removefile('tmpaffix.r2py')

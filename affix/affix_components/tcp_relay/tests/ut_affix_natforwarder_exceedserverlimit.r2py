@@ -1,46 +1,32 @@
 """
-Verify that the NAT forwarder survives and counts registered server slots 
-correctly even when a server closes its side of the control connection 
-socket during connection setup. The server does this by making a deliberately 
-botched connection attempt, then hanging up, then doing a correct setup 
-and running the RepyV2 TCP connection test across the forwarder.
+Overloads a nat forwarder with a low max-server limitation.
 
-The forwarder, server, and client are all hosted by this script.
+Makes sure that the forwarder and affix stack behave in an expected manner
+when this event occurs.  We expect to see an AddressBindingError on the
+server when this occurs.
 
-Possible errors with an unstable NAT forwarder include crashes when the 
-server first hangs up, and no available server slots afterwards.
-
-NOTE: Again, copy-pasta-ing the forwarder code here is ugly, but 
-I don't currently know a better way of making the overrides work.
 """
+#pragma out 0 server slots remain.
+#pragma out Max servers reached.
+
 #pragma repy restrictions.affix dylink.r2py
-#pragma out
+#pragma error Unable to connect to any NAT Forwarder.
 
 # required for logging
 time = dy_import_module('time.r2py')
 time.time_updatetime(34612)
 
-# Make a list of usable source ports for connections
-random = dy_import_module("random.r2py")
-available_ports = list(getresources()[0]["connport"])
-random.random_shuffle(available_ports)
 
-
-# Cut down the number of server slots and parallel clients 
-# so we can easily verify that the botched connection attempted 
-# isn't counted towards the current number of registered servers
 MAX_SERVERS = 1
-MAX_CLIENTS_PER_SERVER = 1
+
+mycontext['listenport_tcp'] = 34612 # 12345
 
 
 
 
-########################################################################
-# Begin import of nat_forwarder.r2py
-# (linkleonard's commit 0c453828d973ff851e3fd967773bde44e11e842b)
 """
 <Program Name>
-  nat_forwarder.r2py
+  tcp_relay.r2py
 
 <Purpose>
   The purpose of this program is to act as a nat forwarder.
@@ -55,15 +41,15 @@ MAX_CLIENTS_PER_SERVER = 1
   monzum@cs.washington.edu
 
 <Usage>
-  python repy.py RESTRICTION_FILE dylink.repy nat_forwarder.repy TCP_PORT 
+  python repy.py RESTRICTION_FILE dylink.repy tcp_relay.repy TCP_PORT 
     [ NAT_FORWARDER_KEY ]
 """
 
 dy_import_module_symbols("session.r2py")
 advertisepipe = dy_import_module("advertisepipe.r2py")
 dy_import_module_symbols("affixstackinterface.r2py")
-dy_import_module_symbols("nat_forwarder_common_lib.r2py")
-iplib = dy_import_module("natdecideraffix.r2py")
+dy_import_module_symbols("tcp_relay_common_lib.r2py")
+iplib = dy_import_module("checkprivateipaffix.r2py")
 time = dy_import_module("time.r2py")
 
 
@@ -86,6 +72,25 @@ SLEEP_TIME = 0.001
 
 RECV_BYTES = int(min(getresources()[0]['netrecv'], 
   getresources()[0]['netsend']))
+
+
+
+# Some variables determining how many servers
+# and clients can connect at once to the forwarder.
+# A server is a node that uses us as the "listening proxy".
+# A client is a node that connects to that node through us.
+# Note that for each client that connects to a server,
+# two new threads is started.
+# Our resources are limited by the number of available threads, 
+# number of threads < 2 * MAX_SERVERS * MAX_CLIENTS_PER_SERVER + some buffer.
+# While our primary use case is NAT forwarding on behalf of the 
+# nodemanager, I consider supporting a larger number of servers more 
+# important than very many parallel incoming connections per server. 
+# I will provide at least one server slot.
+# YMMV. Override these values for your use case!
+
+MAX_CLIENTS_PER_SERVER = 3
+
 
 
 # Message log types
@@ -616,35 +621,14 @@ def logmsg(message, msg_type):
 
   log(header + message + '\n')
 
-# End import of nat_forwarder.r2py
-########################################################################
-
 
 
 log("Setting up NAT forwarder.\n")
-forwarder_port = available_ports.pop()
-mycontext['listenport_tcp'] = forwarder_port
+mycontext['listenport_tcp'] = 12345
 createthread(tcp_forwarder_listener)
 log("NAT forwarder started.\n")
 
 
-
-log("Starting botched setup attempt.\n")
-# Emulate NatPunchAffix's NAT forwarder connection setup, 
-# see NatPunchAffix.connect_to_forwarder()
-server_port = available_ports.pop()
-sockobj = openconnection(getmyip(), forwarder_port, getmyip(), server_port, 10)
-# We would now use a timeoutsocket to register etc., but we're in for trouble!
-# Send an incomplete message, then drop the connection unexpectedly.
-sockobj.send("100\n" + SERVER_REGISTER + "," + 
-    getmyip() + "," + str(server_port))
-sockobj.close()
-log("Done with botched setup attempt.\n")
-log("Setting up RepyV2 TCP connection test now.\n")
-
-# The forwarder should (1) stay alive and (2) dergister the previous server 
-# so that the MAX_SERVERS limit is restored to 1. We'll check by 
-# re-registering and running the TCP connection test.
 
 
 
@@ -652,18 +636,32 @@ dy_import_module_symbols("affixstackinterface.r2py")
 
 # Set up the Affix stack to use, and override the network calls we need.
 # We'll host the forwarder ourselves for this test.
-affix_object = AffixStackInterface("(NatPunchAffix," + getmyip() + ":" + 
-    str(forwarder_port) + ")")
+affix_object = AffixStackInterface("(TCPRelayAffix," + getmyip() + ":" + 
+    str(mycontext['listenport_tcp']) + ")")
 listenforconnection = affix_object.listenforconnection
 openconnection = affix_object.openconnection
 
 
-# Connect to the forwarder, send/receive a test message.
-dy_import_module_symbols("ut_repyv2api_tcpconnectiontest.r2py")
-createthread(launch_server)
-sleep(5)
-createthread(connect_and_send_message)
+def open_socket_and_sleep(port):
+  def open_socket_and_sleep_handler():
+    log("Port is", port, "\n")
+    socket = listenforconnection(getmyip(), port)
+    while True:
+      sleep(1.0)
+    # Needed so that socket doesn't go out of scope too early
+    socket.close()
+  return open_socket_and_sleep_handler
+
+
+# Give the forwarder some time to set up...
 sleep(10)
 
-exitall()
+createthread(open_socket_and_sleep(63100))
+# Why do we need a sleep here?  Without it we get some sort of KeyError...
+# Smells like some kind of race condition.
+sleep(10)
+
+# This second one should fail with a AddressBindingError, since the forwarder
+# only supports 1 server.
+createthread(open_socket_and_sleep(63101))
 

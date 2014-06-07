@@ -1,7 +1,7 @@
 #!python
 """
 <Program Name>
-  affixstackinterface.repy
+  affixstackinterface.r2py
 
 <Author>
   Monzur Muhammad, monzum@cs.washington.edu
@@ -44,11 +44,11 @@
   Sample Usage:
   -------------
 
-  Importing affixstackinterface.repy library:
+  Importing affixstackinterface.r2py library:
 
-    # Importing affixstackinterface.repy.
+    # Importing affixstackinterface.r2py.
     try:
-      dy_import_module_symbols("affixstackinterface.repy")
+      dy_import_module_symbols("affixstackinterface.r2py")
     except NameError: 
       # If dylink from repy is not available, we must import
       # and initialize it.
@@ -56,7 +56,7 @@
       _context = locals()
       add_dy_support(_context)
 
-      dy_import_module_symbols("affixstackinterface.repy")
+      dy_import_module_symbols("affixstackinterface.r2py")
 
 
   Creating and using AffixStackInterface module:
@@ -89,10 +89,10 @@
 """
 
 # Import the main affix stack library that allows us to build
-# the affix stack. affix_stack.repy has most of the core code
+# the affix stack. affix_stack.r2py has most of the core code
 # that initializes different affix components and builds a 
 # stack that is ready to be used by the application.
-dy_import_module_symbols("affix_stack")
+dy_import_module_symbols("affix_stack.r2py")
 
 
 class AffixStackInterface:

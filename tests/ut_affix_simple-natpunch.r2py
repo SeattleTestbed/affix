@@ -13,8 +13,8 @@ forwarder_address = nat_forwarder_list[0]
 
 log("Using forwarder:", forwarder_address)
 
-affix_server_string = '(NatPunchAffix,%s)' % forwarder_address
-affix_client_string = '(NatPunchAffix,%s)' % forwarder_address
+affix_server_string = '(TCPRelayAffix,%s)' % forwarder_address
+affix_client_string = '(TCPRelayAffix,%s)' % forwarder_address
 listen_port = 12345
 client_port = 12348
 
