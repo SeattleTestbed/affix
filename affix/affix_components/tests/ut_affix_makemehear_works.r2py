@@ -1,0 +1,39 @@
+"""
+Run a server that decides whether it needs a TCP relay for listening 
+via the MakeMeHearAffix, and a client that connects to the server 
+that also auto-configures using a CoordinationAffix.
+This test relies on the actual advertise services, TCP relays, and 
+canilisten servers to run.
+If anything goes wrong, an exception is raised.
+"""
+#pragma repy restrictions.affix dylink.r2py
+#pragma out
+
+dy_import_module_symbols("affixstackinterface.r2py")
+
+# Set up the Affix stack to use, and override the network calls we need
+server_affix_object = AffixStackInterface("(MakeMeHearAffix)")
+listenforconnection = server_affix_object.listenforconnection
+
+client_affix_object = AffixStackInterface("(CoordinationAffix)")
+openconnection = client_affix_object.openconnection
+
+# Import the actual test
+dy_import_module_symbols("ut_repyv2api_tcpconnectiontest.r2py")
+
+listen_socket = listenforconnection(getmyip(), 63100)
+
+log(listen_socket, "\n")
+
+
+exitall()
+
+
+#------------------------------------------------------------------------
+
+
+
+# Wait a bit until the server has launched, advertised its Affix stack etc.
+sleep(50)
+createthread(connect_and_send_message)
+
