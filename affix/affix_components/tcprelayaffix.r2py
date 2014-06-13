@@ -162,10 +162,12 @@ class TCPRelayAffix(BaseAffix):
     try:
       session_sendmessage(sockobj, "%s,%s" % (CONNECT_CLIENT_TAG, server_id)) 
       confirmation_msg = session_recvmessage(sockobj)
-    except SocketWouldBlockError:
-      # If we timeout sending or receiving connection handshake 
-      # message, then we consider this to have failed. So we raise
-      # a TimeoutError.
+    except sockettimeout.SocketTimeoutError:
+      # If the sockettimeout expires, raise this as a TimeoutError 
+      # (emulating what happens when the plain openconnection 
+      # timeout is reached). This "casting" is required as our caller 
+      # will not expect a timeout wrapper exception from a plain 
+      # Repy API call.
       raise TimeoutError("Connection timed out while negotiating connection " +
               "with the forwarder '%s:%d'." % (forwarder_ip, forwarder_port)) 
 
@@ -351,9 +353,12 @@ class TCPRelayAffix(BaseAffix):
     try:
       session_sendmessage(new_sockobj, CONNECT_SERVER_TAG + ',' + server_id)
       response = session_recvmessage(new_sockobj)
-    except SocketWouldBlockError, err:
-      raise TCPServerSocketInvalidError("Unable to connect to any client due to timeout when requesting for connection for server id: %s. %s" % 
-        (server_id, repr(err)))
+    except (sockettimeout.SocketTimeoutError, SocketClosedRemote, 
+        session.SessionEOF), e:
+      raise TCPServerSocketInvalidError(
+          "Cannot get further client connections from TCP relay " + 
+          forwarder_ip + ":" + str(forwarder_port) + " using server ID " + 
+          server_id + " due to error " + repr(e))
 
     # We successfully made a connection! So we return the socket along with
     # the ip address and port of the client.
@@ -367,11 +372,10 @@ class TCPRelayAffix(BaseAffix):
       return (client_ip, client_port, new_sockobj.socket)
     elif response.startswith(CONNECT_FAIL):
       raise SocketWouldBlockError("Unable to connect to any client currently.")
-          
-          
 
-          
-          
+
+
+
   def connect_to_forwarder(self, localip, localport):
     """
     <Purpose>
