@@ -1,18 +1,34 @@
 """
 Run a server that decides whether it needs a TCP relay for listening 
-via the MakeMeHearAffix, and a client that connects to the server 
-that also auto-configures using a CoordinationAffix.
+via the MakeMeHearAffix, and a client that connects to the server that 
+also auto-configures its outgoing connection using a CoordinationAffix.
 This test relies on the actual advertise services, TCP relays, and 
 canilisten servers to run.
 If anything goes wrong, an exception is raised.
+
+Note that there is quite a bit of setup involved, so the timeouts 
+are chosen rather generously:
+. In MakeMeHearAffix (server thread)
+  - Look up canilisten server
+  - Contact canilisten server to have it connect back in
+. If we cannot listen, then in TCPRelayAffix (server thread)
+  - Set up a TCP relay that will listen on our behalf
+. In CoordinationAffix
+  - announce Affix string required for the listening socket (server thread)
+  - look up that string in preparation for connecting in (client thread)
+. Again in TCPRelayAffix
+  - Regularly check for incoming connections (server thread)
+  - Connect to Affix to get forwarder (client thread)
+  - Get new connection to let the client connect in (server thread)
 """
 #pragma repy restrictions.affix dylink.r2py
 #pragma out
 
 dy_import_module_symbols("affixstackinterface.r2py")
+random = dy_import_module("random.r2py")
 
 # Set up the Affix stack to use, and override the network calls we need
-server_affix_object = AffixStackInterface("(MakeMeHearAffix)")
+server_affix_object = AffixStackInterface("(CoordinationAffix)(MakeMeHearAffix)")
 listenforconnection = server_affix_object.listenforconnection
 
 client_affix_object = AffixStackInterface("(CoordinationAffix)")
@@ -21,19 +37,11 @@ openconnection = client_affix_object.openconnection
 # Import the actual test
 dy_import_module_symbols("ut_repyv2api_tcpconnectiontest.r2py")
 
-listen_socket = listenforconnection(getmyip(), 63100)
-
-log(listen_socket, "\n")
 
 
-exitall()
-
-
-#------------------------------------------------------------------------
-
-
-
+createthread(launch_server)
 # Wait a bit until the server has launched, advertised its Affix stack etc.
-sleep(50)
+sleep(30)
 createthread(connect_and_send_message)
-
+sleep(30)
+exitall()
