@@ -255,12 +255,12 @@ class RepyNetworkApiWrapper:
     Call getconnection() on the original repy tcpserversocket.
     """
 
-    rip, rport, sockobj = tcpserversocket.getconnection()
+    rip, rport, sockect = tcpserversocket.getconnection()
 
     if DEBUG_MODE:
       log("[Netcall:tcpserver.getconnection] Socket: %s, Remoteip: %s, Remoteport: %d" % (str(socket), remoteip, remoteport))
 
-    return rip, rport, sockobj
+    return rip, rport, socket
 
 
 
