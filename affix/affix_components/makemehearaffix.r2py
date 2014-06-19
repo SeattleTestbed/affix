@@ -34,6 +34,7 @@ dy_import_module_symbols("baseaffix.r2py")
 dy_import_module_symbols("affixmisc.r2py")
 dy_import_module_symbols("affix_stack.r2py")
 dy_import_module_symbols("affix_exceptions.r2py")
+advertise = dy_import_module("advertise.r2py") # For AdvertiseError
 cachedadvertise = dy_import_module("cachedadvertise.r2py")
 canilisten = dy_import_module("canilisten.r2py")
 
@@ -84,7 +85,9 @@ class MakeMeHearAffix(BaseAffix):
       Same as Repy V2 API.
 
     <Exceptions>
-      None
+      Same as the RepyV2 API. (This implies that some Affix-internal 
+      error conditions are raised as errors that are not perfect 
+      matches).
 
     <Side Effects>
       Modifies the Affix stack.
@@ -92,7 +95,28 @@ class MakeMeHearAffix(BaseAffix):
     <Return>
       A listening socket.
     """
-    (can_hear_on_localport, _, _)  = canilisten.check_specific_port(localport)
+    try:
+      (can_hear_on_localport, _, _)  = canilisten.check_specific_port(localport)
+    except (AlreadyListeningError, DuplicateTupleError, RepyArgumentError, 
+        ResourceForbiddenError, AddressBindingError):
+      # check_specific_port can raise these errors when it tries to 
+      # call listenforconnection with the user's desired localport. 
+      # The user must expect these from plain listenforconnection, 
+      # so we raise them.
+      raise
+    except (advertise.AdvertiseError, canilisten.CanIListenError), e:
+      # XXX Can't catch AdvertiseError???
+
+      # These mean we couldn't find/contact canilisten servers. 
+      # I'll treat this as an error and not try to work around. 
+      # (Another option would be to continue and assume we can't 
+      # hear on localport. This however means that an error in 
+      # the canilisten/advertise services will cause all previously 
+      # non-relayed nodes to thrash our TCP relays, and possibly 
+      # knock out advertise/relay services. 
+      # Conversely, assuming we *can* listen, yields a de-facto 
+      # unusable port, see the comment below).
+      raise AddressBindingError("MakeMeHearAffix: Error looking up or contacting canilisten servers. Exception encountered: " + repr(e))
 
     # Add in an Affix (the TCPRelayAffix per default) if we cannot 
     # hear on localport; add in a supposedly other (the NoopAffix 
