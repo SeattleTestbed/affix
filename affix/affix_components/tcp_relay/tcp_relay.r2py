@@ -328,8 +328,14 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
           # If the server connection has been closed, we unregister
           # the server.
           unregister_server(server_id)
-          
+          # XXX Continuing below after unregister_server tricks the client 
+          # XXX into believing that all is well. It will need to time out 
+          # XXX to note that it's not. Shouldn't we actively notify it and/or 
+          # XXX close the cur_client_sockobj?
+
         try:
+          # Caveat, see above. Ending up here doesn't mean the 
+          # connection to the server is still good.
           session_sendmessage(cur_client_sockobj, CONNECT_SUCCESS)
         except (SocketClosedRemote, SocketClosedLocal), err:
           logmsg("Couldn't connect server '" + str(server_id) + 
