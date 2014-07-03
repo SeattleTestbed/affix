@@ -174,7 +174,11 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
 
     logmsg("Server '%s' at %s:%s requesting to register" % 
       (server_id, remote_ip, str(remote_port)), INFO_MSG)
-    
+
+    # Ensure that the registered_server dict doesn't change while 
+    # we are modifying it    
+    register_lock.acquire(True)
+
     # Check to see if the server is already registered. If it is then 
     # we just return.
     if server_id in registered_server.keys():
@@ -185,11 +189,12 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
         registered_server[server_id]['waiting_clients'] = []
       if 'client_lock' not in registered_server[server_id].keys():
         registered_server[server_id]['client_lock'] = createlock()
+      # The server entry is in the correct format.
+      register_lock.release()
       return
   
-  
-    # Acquire the lock before registering so there is no contention.
-    register_lock.acquire(True)
+    # The server was not in the dict already. Add it, start 
+    # serving threads, etc. 
     try:
       if len(registered_server.keys()) < MAX_SERVERS:
         # The server_id does not exist in our registered_server dict.
@@ -197,6 +202,8 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
         registered_server[server_id]['connected_clients'] = []
         registered_server[server_id]['waiting_clients'] = []
         registered_server[server_id]['client_lock'] = createlock()
+        # All changes done. Release the lock.
+        register_lock.release()
         
         # Launch a thread that waits for any communication from the server.
         # Such that if a server checks to see if there is any client waiting,
@@ -218,10 +225,8 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
           (server_id, remote_ip, str(remote_port)), INFO_MSG)
     except Exception, e:
       logmsg("Error " + repr(e), INFO_MSG)
-    finally:
-      register_lock.release()
-      
-      
+
+
   return _register_server_helper
   
 
@@ -237,6 +242,9 @@ def unregister_server(server_id):
   register_lock.acquire(True)
   try:
     registered_server.pop(server_id)
+    logmsg("Unregistered server '" + server_id + "'. " + 
+        str(MAX_SERVERS - len(registered_server)) + 
+        " server slots free.", INFO_MSG) 
   except KeyError:
     # If the server id does not exist, we don't
     # need to worry about it.
@@ -565,16 +573,10 @@ def launch_server_communication_thread(sockobj, server_id):
 
     sockobj.close()
 
-    # Once we have broken out of the loop, we are going to unregister
-    # the server before we exit this thread.
-    register_lock.acquire(True)
-    try:
-      registered_server.pop(server_id)
-    finally:
-      register_lock.release()
+    # Once we have broken out of the loop, unregister the server 
+    # before we exit this thread.
+    unregister_server(server_id)
       
-    logmsg("Unregistered server '%s'. %i server slots free." % 
-      (server_id, MAX_SERVERS - len(registered_server)), INFO_MSG) 
   
   return _server_communication_helper
 
