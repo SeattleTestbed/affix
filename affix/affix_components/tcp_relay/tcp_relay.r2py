@@ -327,8 +327,6 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
         except (SocketClosedRemote, SocketClosedLocal), err:
           # If the server connection has been closed, we unregister
           # the server.
-          # MMM: Would this cause any issue if the server tries to
-          # connect in the future?
           unregister_server(server_id)
           
         try:
@@ -337,8 +335,9 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
           logmsg("Couldn't connect server '" + str(server_id) + 
             "' to client '" + str(client_id) + 
             "'. Client closed connection. " + str(err), ERR_MSG)
-        logmsg("Made connection to '%s' from '%s'" % (server_id, client_id), 
-          INFO_MSG)
+        else:
+          logmsg("Made connection to '%s' from '%s'" % (server_id, client_id), 
+              INFO_MSG)
       else:
         session_sendmessage(sockobj, CONNECT_FAIL)
         logmsg("Unable to register additional client '" + str(client_id) + 
@@ -440,7 +439,7 @@ def forward_tcp_message(server_id, client_id, from_sock, to_sock):
     while True:
       try:
         # Receive the incoming message, then forward the entire message
-        # to the to_sock. But first we attempt to acquire the lock
+        # to the to_sock.
         data_recv += from_sock.recv(RECV_BYTES)
       except SocketWouldBlockError:
         sleep(SLEEP_TIME)
@@ -460,28 +459,6 @@ def forward_tcp_message(server_id, client_id, from_sock, to_sock):
           # If any of the socket is closed then we break out of the loop.
           break
   
-    """
-    while True:
-      try:
-        # Receive the incoming message, then forward the entire message
-        # to the to_sock. But first we attempt to acquire the lock
-        data_recv = from_sock.recv(RECV_BYTES)
-        
-        # Send all the data.
-        while data_recv:
-          try:
-            data_sent = to_sock.send(data_recv)
-            data_recv = data_recv[data_sent:]
-          except SocketWouldBlockError:
-            sleep(SLEEP_TIME)
-      except SocketWouldBlockError:
-        sleep(SLEEP_TIME)
-      except (SocketClosedLocal, SocketClosedRemote):
-        # If any of the socket is closed then we break out of the loop.
-        break
-      except Exception, err:
-        logmsg("Error in forwarding TCP message. " + str(err), DEBUG_MSG)
-      """
     # Since we are done sending the data, we clean up the sockets. Note
     # that we should only be here if one of the socket has already been
     # closed. 
@@ -518,9 +495,9 @@ def forward_tcp_message(server_id, client_id, from_sock, to_sock):
   # Return the helper function.	  
   return _forward_tcp_message_helper 	  
 
-		
-	
-  
+
+
+
 # ====================================================
 # TCP Server Control Socket
 # ====================================================
