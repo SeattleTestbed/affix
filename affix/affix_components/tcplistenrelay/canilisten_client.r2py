@@ -1,0 +1,197 @@
+"""
+canilisten_client.r2py -- a client querying the canilisten_server for its 
+  listen-abilities.
+
+USAGE:
+  python repy.py restrictionsfile dylink.r2py canilisten_client.r2py [ PORT ]
+"""
+
+# Reuse a few definitions in the server-side code
+canilisten_server = dy_import_module("canilisten_server.r2py")
+
+advertise = dy_import_module("advertise.r2py")
+random = dy_import_module("random.r2py")
+session = dy_import_module("session.r2py")
+listops = dy_import_module("listops.r2py")
+sockettimeout = dy_import_module("sockettimeout.r2py")
+serialize = dy_import_module("serialize.r2py")
+
+
+def canilisten(desired_port):
+  """
+  This is a readily importable function to do the can-I-listen check 
+  on a specified port.
+  It returns a tuple consisting of
+  (can_i_listen, apparent_ip, apparent_port)
+    can_i_listen -- True if the server could connect to apparent_ip:desired_port successfully
+    apparent_ip -- My actual IP address as seen from the server.
+    apparent_port -- My actual source port as seen from the server.
+
+    If the apparent_* return values are None, then the experiment wasn't 
+    actually performed. This indicates an error in the setup of the 
+    local listening port, or the absence of suitable servers.
+    
+  """
+  # Set up the listening socket to which the server will try to connect
+  try:
+    raw_listen_socket = listenforconnection(getmyip(), desired_port)
+    listen_socket = sockettimeout.timeout_server_socket(raw_listen_socket)
+  except Exception, e:
+    log("Failed to listen on", getmyip(), "port", desired_port, "with error", 
+        repr(e), "\n")
+    # This basically means that I cannot listen on the desired port, 
+    # although not for firewall/NAT reasons...
+    return (False, None, None)
+
+
+  # Look up servers
+  canilisten_servers = advertise.advertise_lookup(canilisten_server.CAN_I_LISTEN_KEY)
+  if canilisten_servers == []:
+    log("Did not find any servers advertising", 
+        canilisten_server.CAN_I_LISTEN_KEY, "\n")
+    return (False, None, None)
+
+  # Iterate over servers to find a usable one
+  for server in canilisten_servers:
+    server_ip, server_portstring = server.split(":")
+    server_port = int(server_portstring)
+    allowed_ports = list(getresources()[0]["connport"])
+    random.random_shuffle(allowed_ports)
+    for local_port in allowed_ports:
+      try:
+        log("Trying canilisten server", server_ip, "on port", server_portstring, "\n")
+        server_socket = openconnection(server_ip, server_port, 
+            getmyip(), local_port, 5)
+      except (AddressBindingError, DuplicateTupleError,
+            AlreadyListeningError, CleanupInProgressError,
+            TimeoutError, RepyArgumentError):
+          # RepyArgumentError arises if we happen to run the canilisten 
+          # server on the same node as the client, and by chance select 
+          # server_port == local_port.
+          continue
+      except ConnectionRefusedError:
+        # Rogue/overloaded server? Retry with another.
+        break
+      else:
+        log("Connected to the server, sending my local IP and desired port\n")
+	local_ip_and_desired_port = getmyip() + ":" + str(desired_port)
+	magic_cookie = randombytes()[:len(local_ip_and_desired_port)]
+	scrambled_local_ip_and_desired_port = canilisten_server.xor_strings(
+	    local_ip_and_desired_port, magic_cookie)
+	my_properties_dict = {"scrambled local ip and desired port": 
+	    scrambled_local_ip_and_desired_port, "magic cookie": magic_cookie}
+	message = serialize.serialize_serializedata(my_properties_dict)
+        session.session_sendmessage(server_socket, message)
+
+
+        log("Receive my apparent IP and source port, and the test message\n")
+        raw_response = session.session_recvmessage(server_socket)
+        response_dict = serialize.serialize_deserializedata(raw_response)
+
+        test_message = response_dict["test message"]
+
+        apparent_ip_and_port = canilisten_server.xor_strings(
+            response_dict["scrambled apparent ip and source port"], 
+            response_dict["magic cookie"])
+
+        apparent_ip, apparent_portstring = apparent_ip_and_port.split(":")
+        apparent_port = int(apparent_portstring)
+
+        log("Apparent IP", apparent_ip, "port", apparent_port, "\n")
+
+
+        log("Waiting for a connection on the listening socket\n")
+        while True:
+          try:
+            (remote_ip, remote_port, raw_probe_socket) = \
+                listen_socket.getconnection(timeout=10)
+            if remote_ip != server_ip:
+              # Someone else is connecting, not the expected canilisten 
+              # server. Close and keep listening.
+              raw_probe_socket.close()
+            else:
+              # The expected server connected back in!
+              # Wrap the raw socket to use timeouts
+              probe_socket = sockettimeout.timeout_socket(raw_probe_socket)
+              break
+          except SocketWouldBlockError:
+            sleep(1)
+
+        log("Probe socket connected to by", remote_ip, "port", remote_port, 
+            ". Now receive the test message\n")
+        comparison_test_message = session.session_recvmessage(probe_socket)
+        try:
+          probe_socket.close()
+        except SocketClosedRemote:
+          # The remote side closed before us. Never mind.
+          pass
+
+        # What's the server's view of our little experiment?
+        server_status = session.session_recvmessage(server_socket)
+        try:
+          server_socket.close()
+        except SocketClosedRemote:
+          # The remote side closed before us. Never mind.
+          pass
+
+        if comparison_test_message == test_message:
+          log("Server concluded:", server_status, "\n")
+          return (True, apparent_ip, apparent_port)
+        else:
+          # How come???
+          log("Did not receive the expected test message.\n")
+          return (False, None, None)
+  else:
+    log("Exhausted server list to no avail.\n")
+    return (False, None, None)
+
+
+
+def usage():
+  log("""
+canilisten_client.r2py -- a client querying the canilisten_server for its 
+  listen-abilities.
+
+USAGE:
+  python repy.py restrictionsfile dylink.r2py canilisten_client.r2py [ PORT ]
+
+PORT is an optional listening port you would like the server to check. 
+If omitted, a random allowed port is chosen instead.
+""")
+
+
+
+if callfunc == "initialize":
+  desired_port = None
+  try:
+    desired_port = int(callargs[0])
+  except IndexError:
+    # Port not specified, we'll use any instead
+    pass
+  except ValueError:
+    # Couldn't cast. Educate the user.
+    usage()
+    exitall()
+
+  if desired_port:
+    allowed_tcp_ports = desired_port
+  else:
+    allowed_tcp_ports = list(getresources()[0]["connport"])
+    random.random_shuffle(allowed_tcp_ports)
+
+  for desired_port in allowed_tcp_ports:
+    log("Can I listen on", getmyip(), "port", desired_port, "?\n")
+    try:
+      can_i_listen, apparent_ip, apparent_port = canilisten(desired_port)
+      break
+    except Exception, e:
+      log("Tried port", desired_port, "with no success:", repr(e), "\n")
+
+  if can_i_listen:
+    log("Yes, I can indeed")
+  else:
+    log("No, I cannot")
+
+  log("listen on", getmyip(), "port", desired_port, "\n")
+  log("My external IP is", apparent_ip, "\n")
+

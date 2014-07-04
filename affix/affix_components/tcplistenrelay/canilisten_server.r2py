@@ -1,0 +1,272 @@
+"""
+canilisten_server.r2py -- TCP service that connects back to you on a 
+  port you specify. This way you can find out whether you can listen 
+  for incoming connections, or are firewalled.
+
+USAGE:
+python repy.py restrictionsfile dylink.r2py canilisten_server.r2py [ PORT ]
+
+What happens:
+. Services announces ("canilisten", its IP + ":" + its port)
+. Client calls listenforconnection on an arbitrary port
+. Client looks up "canilisten", receives service IP and port
+. Client contacts service: "My local IP is ....., please connect back to me 
+    on port ...."
+    (Technical detail: The IP address and possibly port should be XORed 
+    with a string of same length as NAT boxes might inspect and modify the 
+    application-layer contents -- see the STUN/TURN RFCs)
+. Service replies: "Your apparent IP is ....., I'll connect to you now. 
+    My test message will be ...."
+    (Technical detail: XORing applies too.)
+. Service connects to apparent IP : port
+. Service sends test message
+. Both hang up.
+
+Technical description:
+. Client sends serialize({
+    "scrambled local ip and desired port": SCRAMBLED_IP_AND_PORT, 
+    "magic cookie": MAGIC_COOKIE
+    })
+  where SCRAMBLED_IP_AND_PORT is a string such as "131.130.125.5:63107" XORed 
+  with the value of MAGIC_COOKIE; 
+  and MAGIC_COOKIE is a random string equal in length to SCRAMBLED_IP_AND_PORT
+. Service replies with serialize({
+    "scrambled apparent ip and source port": SCRAMBLED_IP_AND_PORT,
+    "magic cookie": MAGIC_COOKIE, 
+    "test message": TEST_MESSAGE
+    })
+  Here, the client's apparent (``external'') IP address and the source 
+  port it is using on the connection is returned. That way, the client 
+  can see whether its IP or port mapping is modified in transit.
+  TEST_MESSAGE is a random 1kB message that the client can use to verify 
+  that it is seeing the expected incoming connection from the 
+  canilisten server.
+"""
+
+time = dy_import_module("time.r2py")
+serialize = dy_import_module("serialize.r2py")
+session = dy_import_module("session.r2py")
+listops = dy_import_module("listops.r2py")
+random = dy_import_module("random.r2py")
+advertise = dy_import_module("advertise.r2py")
+advertisepipe = dy_import_module("advertisepipe.r2py")
+
+
+CAN_I_LISTEN_KEY = "canilisten"
+
+
+
+
+def create_client_handler(ip, port, client_socket):
+  """
+  Return a function that handles the client connected over client_socket. 
+  The returned function cannot take arguments as it will be called by 
+  createthread.
+  """
+  def client_handler():
+    """
+    Receive a message from the client, reply with the client's apparent 
+    IP and source port, and connect to the apparent IP on the desired 
+    port to see if the client can listen there. If the client is able 
+    to accept the incoming connection, send a test message.
+    """
+    try:
+      # Receive the client's message
+      raw_client_message = session.session_recvmessage(client_socket)
+
+      # Parse it
+      client_message = serialize.serialize_deserializedata(raw_client_message)
+      local_ip_and_port = xor_strings(
+          client_message["scrambled local ip and desired port"], 
+          client_message["magic cookie"])
+      # XXX We don't currently use the local IP
+      local_ip, port_string = local_ip_and_port.split(":")
+
+      # This is the port we will connect to
+      desired_port = int(port_string)
+    
+      apparent_ip_and_port = remote_ip + ":" + str(remote_port)
+
+      magic_cookie = randombytes()[:len(apparent_ip_and_port)]
+      scrambled_apparent_ip_and_port = xor_strings(apparent_ip_and_port, 
+	  magic_cookie)
+
+      test_message = randombytes()
+      reply_dict = {"scrambled apparent ip and source port": 
+	  scrambled_apparent_ip_and_port,
+	  "magic cookie": magic_cookie,
+	  "test message": test_message} 
+      reply = serialize.serialize_serializedata(reply_dict)
+      session.session_sendmessage(client_socket, reply)
+      sleep(2)
+
+      # The client now knows its apparent IP and source port from 
+      # the control connection; let's open up a connection to the 
+      # desired port.
+      allowed_ports = list(getresources()[0]["connport"])
+      for local_port in allowed_ports:
+	try:
+          logtn("Trying to connect to client", remote_ip, "on port", 
+              desired_port, "from", getmyip(), "on port", local_port)
+	  probe_socket = openconnection(remote_ip, desired_port, 
+	      getmyip(), local_port, 5)
+          logtn("Connected!")
+          break
+	except (AddressBindingError, DuplicateTupleError, 
+	    AlreadyListeningError, CleanupInProgressError, 
+	    RepyArgumentError), e:
+          logtn("Unsuccessful,", repr(e))
+	  continue
+	except (TimeoutError, ConnectionRefusedError):
+	  # Notify the client that we couldn't connect. 
+	  session.session_sendmessage(client_socket, 
+	      "Connection from " + getmyip() + ":" + str(local_port) + 
+	      " to " + remote_ip + ":" + str(desired_port) + 
+	      " refused. Giving up.")
+	  client_socket.close()
+          raise
+
+      # We have a probe_socket! Send the test message and close it, 
+      # report over the control connection that we succeeded.
+      logtn("Sending test message")
+      session.session_sendmessage(probe_socket, test_message)
+      logtn("Done.")
+      try:
+	probe_socket.close()
+      except SocketClosedRemote:
+	# The remote side closed before us. Never mind.
+	pass
+
+      success_message = "Successfully connected from " + getmyip() + \
+          ":" + str(local_port) + " to " + remote_ip + ":" + str(desired_port)
+
+      logtn(success_message)
+      session.session_sendmessage(client_socket, success_message)
+      try:
+	client_socket.close()
+      except SocketClosedRemote:
+	# The remote side closed before us. Never mind.
+	pass
+
+    except Exception, e:
+      # This is the catch-all clause for things we can't sensibly handle
+      logtn("Caught error when serving client", ip, "on port", port, 
+          " -- ", repr(e))
+          
+  # Return the inner function that uses the outer function's parameters
+  return client_handler
+
+
+
+
+def xor_strings(string1, string2):
+  """
+  XOR two strings, character by character.
+  """
+  result = ""
+  for char1, char2 in zip(string1, string2):
+    result += chr(ord(char1) ^ ord(char2))
+
+  return result
+
+
+
+def logtn(*args):
+  argstrings = []
+  for arg in args:
+    argstrings.append(str(arg))
+  logstring = str(time.time_gettime()) + " " + " ".join(argstrings) + "\n"
+  log(logstring)
+
+
+
+def usage():
+  log("""
+canilisten_server.r2py -- connect back to a client on a TCP port they 
+  specify, and send a test message. Useful for checking for firewalls 
+  and NATs.
+
+USAGE:
+python repy.py restrictionsfile dylink.r2py canilisten_server.r2py [ PORT ]
+
+where the optional callarg PORT is the server port I will listen on. If 
+omitted, I will choose a port on my own. I'll later advertise my IP and 
+server port under the ```canilisten'' key on the Seattle advertise services, 
+so you will still be able to find me.
+""")
+
+
+
+if callfunc == "initialize":
+  server_port = None
+  try:
+    server_port = int(callargs[0])
+  except IndexError:
+    # No server port was specified by the user. Choose one ourselves later.
+    pass
+  except ValueError:
+    # Couldn't cast to int. That's a fatal error!
+    usage()
+    exitall()
+
+
+  # Autoconfigure the port
+  allowed_tcp_ports = list(getresources()[0]["connport"])
+  allowed_udp_ports = list(getresources()[0]["messport"])
+  usable_ports_for_time = listops.listops_union(allowed_tcp_ports, 
+      allowed_udp_ports)
+  
+  for time_port in usable_ports_for_time:
+    try:
+      log("Getting an NTP timestamp via port", time_port, "...\n")
+      #raise # XXX hardwiring to failover
+      time.time_updatetime(time_port)
+    except:
+      pass
+  else:
+    # None of the ports succeeded (or there were none.)
+    # Complain and work around.
+    log("Could not get an NTP timestamp. Proceeding with time_gettime = getruntime.\n")
+    time.time_gettime = getruntime
+
+
+  logtn("Setting up the listening socket")
+  if not server_port:
+    random.random_shuffle(allowed_tcp_ports)
+  else:
+    allowed_tcp_ports = server_port
+
+  for server_port in allowed_tcp_ports:
+    try:
+      server_socket = listenforconnection(getmyip(), server_port)
+      break
+    except Exception, e:
+      logtn("Error in listenforconnection on", getmyip(), "port", 
+          server_port, repr(e))
+      sleep(1)
+  else:
+    logtn("Could not find a port I can listen on. Exiting.")
+    exitall()
+
+  # If we reach this, we have a server_socket. Announce our existence, 
+  # wait for incoming connections, serve them in separate threads.
+  # XXX We silently assume that our IP doesn't change!
+  logtn("Listening on " + getmyip() + ":" + str(server_port))
+  advertise_handle = advertisepipe.add_to_pipe(CAN_I_LISTEN_KEY, 
+      getmyip() + ":" + str(server_port))
+
+  while True:
+    try:
+      (remote_ip, remote_port, client_socket) = server_socket.getconnection()
+      logtn("Got connection from", remote_ip, remote_port)
+      client_handler = create_client_handler(remote_ip, remote_port, 
+        client_socket)
+      try:
+        logtn("Starting handler for", remote_ip, remote_port)
+        createthread(client_handler)
+      except ResourceExhaustedError:
+        logtn("Insufficient resources for client", remote_ip, "on port", 
+            remote_port, " -- closing socket.")
+        client_socket.close()
+    except (SocketWouldBlockError, ResourceExhaustedError):
+      sleep(1)
