@@ -572,7 +572,7 @@ def launch_server_communication_thread(sockobj, server_id):
 # ====================================================
 def logmsg(message, msg_type):
 
-  header = "[%.4f] " % (time.time_gettime()-time.time_seconds_from_1900_to_1970)
+  header = "[%.4f] " % time.time_getunixtime()
 
   if msg_type == INFO_MSG:
     header += "INFO: "
@@ -589,14 +589,25 @@ def logmsg(message, msg_type):
 # ====================================================
 if callfunc == 'initialize':
   log("Getting an NTP timestamp...\n")
-  time.time_updatetime(63197) # XXX Autoconfigure this!
-  logmsg("Starting unrestricted NAT forwarder.", INFO_MSG)
+  # Try all UDP ports; ignore TCP time servers.
+  for local_port in list(getresources()[0]["messport"]):
+    try:
+      time.time_updatetime(local_port)
+      break
+    except:
+      continue
+  else:
+    log("Could not updatetime() on any of the allowed UDP ports. Continuing with time.time_getunixtime = getruntime.\n")
+    time.time_getunixtime = getruntime()
+
+
+  logmsg("Starting TCP relay.", INFO_MSG)
   logmsg("MAX_SERVERS: " + str(MAX_SERVERS) +
     ", MAX_CLIENTS_PER_SERVER: " + str(MAX_CLIENTS_PER_SERVER), INFO_MSG)
 
 
   if len(callargs) < 1:
-    log("Usage:\n\tpython run_unrestricted_tcp_relay.py TCP_PORT [FORWARDER_KEY]") # XXX Allow for port autoconfiguration!
+    log("Usage:\n\tpython repy.py restrictionsfile dylink.r2py tcp_relay.r2py TCP_PORT [FORWARDER_KEY]\n") # XXX Allow for port autoconfiguration!
     exitall()
 
   mycontext['listenport_tcp'] = int(callargs[0])
