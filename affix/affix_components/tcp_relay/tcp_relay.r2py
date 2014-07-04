@@ -103,7 +103,7 @@ def tcp_forwarder_listener():
   while True:
     try:
       # Try to see if there is any connection waiting.
-      remote_ip, remote_port, sockobj = tcp_forwarder_sock.getconnection()
+      remote_ip, remote_port, sockobj = tcp_forwarder_sock.getconnection() # XXX Use a timeout socket instead to avoid malicious clients/servers blocking sockets forever
       logmsg("Incoming connection from '%s:%d'" % (remote_ip, remote_port), 
         INFO_MSG)
     except SocketWouldBlockError:
@@ -117,7 +117,7 @@ def tcp_forwarder_listener():
         logmsg(str(remote_ip) + ":" + str(remote_port) + " said " + 
           conn_init_message, DEBUG_MSG)
         (conn_type, conn_id) = conn_init_message.split(',')
-      except Exception, err:
+      except Exception, err: # XXX Likely too broad an except
         logmsg("Error in connection establishment with " + str(remote_ip) + 
           ":" + str(remote_port) + ": " + 
           str(type(err)) + " " + str(err), DEBUG_MSG)
@@ -139,7 +139,7 @@ def tcp_forwarder_listener():
         # Lanuch a new thread to deal with the new incoming client connection.
         logmsg("Received a request from client '%s:%d' to connect to a server." % (remote_ip, remote_port), INFO_MSG)
         createthread(handle_client_request(remote_ip, remote_port, conn_id, sockobj))
-      else:
+      else: # XXX We should also close the control connection on errors!
         logmsg("Incorrect connection type received from '%s:%d': %s" % 
               (remote_ip, remote_port, conn_type), ERR_MSG)
 	  
@@ -305,7 +305,7 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
     
         # Start up two threads that can forward messages to each other.
         # We also need locks for each of the sockets as the two threads
-        # will attempt to simulatenously recv and send through it.
+        # will attempt to simulatenously recv and send through it. XXX We should wait with thread creation until we know that client and server have received our CONN_SUCCESS notification!
         createthread(forward_tcp_message(server_id, client_id, sockobj, 
           cur_client_sockobj))
         createthread(forward_tcp_message(server_id, client_id, 
@@ -356,7 +356,7 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
         "' to server '" + str(server_id) + "' due to err. " + 
         str(type(err)) + " " + str(err), ERR_MSG)
     finally:
-      registered_server[server_id]['client_lock'].release()
+      registered_server[server_id]['client_lock'].release() # XXX I saw a KeyError here on a relay. The server_id was removed before we could release the client lock. Could removing access to the taken lock block other threads forever? Should unregister_server block for each client_lock before removing the server?
   
   return _handle_server_conn_request_helper
   
@@ -589,14 +589,14 @@ def logmsg(message, msg_type):
 # ====================================================
 if callfunc == 'initialize':
   log("Getting an NTP timestamp...\n")
-  time.time_updatetime(63197)
+  time.time_updatetime(63197) # XXX Autoconfigure this!
   logmsg("Starting unrestricted NAT forwarder.", INFO_MSG)
   logmsg("MAX_SERVERS: " + str(MAX_SERVERS) +
     ", MAX_CLIENTS_PER_SERVER: " + str(MAX_CLIENTS_PER_SERVER), INFO_MSG)
 
 
   if len(callargs) < 1:
-    log("Usage:\n\tpython run_unrestricted_tcp_relay.py TCP_PORT [FORWARDER_KEY]")
+    log("Usage:\n\tpython run_unrestricted_tcp_relay.py TCP_PORT [FORWARDER_KEY]") # XXX Allow for port autoconfiguration!
     exitall()
 
   mycontext['listenport_tcp'] = int(callargs[0])
@@ -617,7 +617,7 @@ regardless. You hopefully know what you do.""", ERR_MSG)
   # Launch the TCP Forwarder.
   logmsg("Creating forwarder thread on " + myip + ":" + str(myport), INFO_MSG)
   createthread(tcp_forwarder_listener)
-  
+  # XXX Create a status thread to show the contents of the registered_server dict every ten minutes or so.
   # Launch advertiser and advertise this forwarders ip address, tcp port.
   advertise_value = myip + ':' + myport 
   logmsg("Starting advertise thread for " + NAT_FORWARDER_KEY + 
