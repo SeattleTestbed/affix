@@ -54,26 +54,9 @@ class BaseAffix:
     """
 
     # Global variables that are used to keep the state of this affix.
-    self.affix_context = {'optional_args' : None,
-                         'next_affix' : None
+    self.affix_context = {'optional_args' : optional_args,
+                         'next_affix' : next_affix
                         }
-
-
-    # Ensure that the reference to the affixstack that we get
-    # is of the type BaseAffix.
-    try:
-      if next_affix:
-        assert(isinstance(next_affix, BaseAffix))
-    except AssertionError:
-      err = "Bad arg provided. next_affix must be of type BaseAffix."
-      err += " Type provided: '%s'" % str(type(next_affix))
-      raise AffixArgumentError(err)
-
-    self.affix_context['optional_args'] = optional_args
-    
-    # I am going to do a copy just to make sure we don't have any 
-    # reference to it.
-    self.affix_context['next_affix'] = next_affix
 
 
 
@@ -147,15 +130,7 @@ class BaseAffix:
       repy network api.
     """
     
-    next_layer = self.affix_context['next_affix']
-    
-    if not next_layer:
-      # This is the case when the affix stack is empty.
-      # So we return a wrapper object which will allow
-      # us to use the original repy network api calls.
-      next_layer = RepyNetworkApiWrapper()
-
-    return next_layer
+    return self.affix_context['next_affix']
 
 
 
@@ -311,6 +286,11 @@ class BaseAffix:
 
   def udpserversocket_close(self, udpserversocket):
     return self.peek().udpserversocket_close(udpserversocket)
+
+
+  def getmyip(self):
+    return self.peek().getmyip()
+
 
 
   def __str__(self):
