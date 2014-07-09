@@ -1,21 +1,8 @@
-#!python
 """
-<Program Name>
-  baseaffix.repy
+baseaffix.r2py
 
-<Author>
-  Danny Y. Huang, yh1@cs.williams.edu
-  Monzur Muhammad, monzum@cs.washington.edu
-
-<Date Started>
-  March 7th, 2011.
-  Originally written by Danny on June 2010.
-
-<Purpose>
-  This is the core of a affix. The very base interface
-  that every affix has to extend and implement specified
-  functions. Note that this file itself is not a affix
-  in itself but rather the skeleton of a affix.
+Defines the interface that every Affix component has to extend 
+and implement.
 """
 
 # Import all the exceptions.
@@ -28,20 +15,17 @@ dy_import_module_symbols("affix_wrapper_lib.r2py")
 
 class BaseAffix:
 
-
   def __init__(self, next_affix, optional_args=None):
     """
     <Purpose>
       Initialize this particular affix.
 
     <Arguments>
-      next_affix - This is the affix component that resides beneath
-          the current affix in the stack. This AFFIX component may
-          be used appropriately or removed if the current AFFIX 
-          chooses to remove it.
+      next_affix - The Affix component that resides beneath
+          the current component in the stack.
 
       optional_args - Any optional argument that this particular 
-          affix takes.
+          Affix componet takes.
 
     <Side Effects>
       None
@@ -54,9 +38,8 @@ class BaseAffix:
     """
 
     # Global variables that are used to keep the state of this affix.
-    self.affix_context = {'optional_args' : optional_args,
-                         'next_affix' : next_affix
-                        }
+    self.affix_context = {'optional_args' : optional_args, 
+        'next_affix' : next_affix}
 
 
 
@@ -68,44 +51,37 @@ class BaseAffix:
 
   def copy(self):
     """
-    Returns a copy of the current instance. Be sure to set internal states to be
-    copied in the new object. An example would be:
+    Creates and returns a copy of this instance. Also copies the 
+    Affix component below us. Typical implementation:
 
-    class MyAffix(BaseAffix):
-      def copy(self):
-        if self.affix_context['next_affix']:
-          next_affix = self.affix_context['next_affix'].copy()
-        else:
-          next_affix = None
-		
-        mycopy = MyAffix(next_affix, self.affix_context['optional_args']
-        mycopy._internalstate = self._internalstate
-        return mycopy
-
+    reference_to_copy_of_next_affix = self.affix_context['next_affix'].copy()
+    reproduced_self = self.__init__(reference_to_copy_of_next_affix, 
+      self.affix_context['optional_args']
+    return reproduced_self
     """
-    raise AffixError("The copy() method is not implemented.")
-
+    raise AffixError(self.__class__.__name__ + 
+        " does not implement a copy() method!")
 
 
   def get_advertisement_string(self):
     """
-    Returns the string used for advertisement of this affix. For example:
+    Returns the string used for advertisement of this Affix component, 
+    and all components below it. For example:
 
-    class MyAffix(BaseAffix):
-      def get_advertisement_string(self):
-        return '(MyAffix,' + str(self._some_shared_state) + ')' + self.peek().get_advertisement_string()
+    return '(MyAffix,' + str(self._some_shared_state) + ')' + self.peek().get_advertisement_string()
 
     If the subclass affix is not meant to be public, then simply return an empty
     string.
 
     """
-    raise AffixError("The get_advertisement_string() method is not implemented.")  
+    raise AffixError(self.__class__.__name__ + 
+        " does not implement a get_advertisement_string() method!")
 
 
 
 
   # =========================================================================
-  # These are public methods that are used to view or modify the AFFIX stack.
+  # Public methods to view or modify the AFFIX stack.
   # =========================================================================
  
   def peek(self):
@@ -138,8 +114,8 @@ class BaseAffix:
   def pop(self):
     """
     <Purpose>
-      Remove and return the nex affix layer from the AFFIX stack.
-      If stack is empty, it raises an error
+      Remove and return the Affix component below us from the Affix stack.
+      If stack is empty, raise an AffixStackError.
 
     <Arguments>
       None
@@ -151,28 +127,24 @@ class BaseAffix:
       AffixStackError - raised if the affix stack is empty.
 
     <Return>
-      The next AFFIX object in the stack.
+      The Affix component that was below us on the stack before the pop().
     """
 
     # We make a reference to the next AFFIX that lies in the stack
     # and point our next_affix pointer to the next_affix of the 
     # next_affix. Example: 
-    # Originally : A->B->C->Null
-    # Finally: A->C->Null,  B->Null
+    # Originally : A->B->C->bottom_of_stack
+    # Finally: A->C->bottom_of_stack,  B->None
     next_affix = self.peek()
 
-    # If we have reached the bottom of the stack and the 
-    # next layer is the RepyNetworkApiWrapper, then we
-    # return as we don't need to pop anything.
-    if isinstance(next_affix, RepyNetworkApiWrapper):
-      raise AffixStackError("The stack is empty. We cannot pop() anymore Affixes.")
-
+    # This fails if next_affix is the RepyNetworkAPIWrapper at 
+    # the bottom of the stack already.
     next_next_affix = next_affix.peek()
-    self.affix_context['next_affix'] = next_next_affix
 
     # We point the next AFFIX for the return object to null so
     # the popped AFFIX object no longer has any reference to any
     # of the AFFIXs in the stack.
+    self.affix_context['next_affix'] = next_next_affix
     next_affix.affix_context['next_affix'] = None
 
     return next_affix
@@ -201,9 +173,6 @@ class BaseAffix:
     # We point the new_affix_object to our next_affix and then point
     # ourself to the new_affix_object.
     next_affix_object = self.peek()
-
-    if isinstance(next_affix_object, RepyNetworkApiWrapper):
-      next_affix_object = None
 
     new_affix_object.affix_context['next_affix'] = next_affix_object
     self.affix_context['next_affix'] = new_affix_object

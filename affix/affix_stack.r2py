@@ -16,10 +16,60 @@ affix_register_lock = createlock()
 
 # Object to represent the bottom of the Affix stack.
 # It almost behaves like an Affix component (safe for the 
-# stack manipulation calls which it lacks) so that higher-layer 
+# stack manipulation calls which raise errors) so that higher-layer 
 # components need not perform special checks before handing 
 # calls downwards.
 bottom_of_stack = repy_network_api_wrapper.RepyNetworkAPIWrapper()
+
+
+
+class AffixStack(BaseAffix):
+  def __init__(self, affix_string):
+    top_affix = build_stack(affix_string)
+    self.affix_context['next_affix'] = top_affix
+
+    # Override this stack's network calls to use the top_affix's.
+    # NOTE: We need to rebind on push()/pop() too, as the top_affix 
+    # changes.
+    _rebind_stack_network_calls(top_affix)
+
+
+  def get_advertisement_string(self):
+    return self.peek().get_advertisement_string()
+
+
+  def _rebind_stack_network_calls(self, affix_object):
+    """
+    Bind this stack object's network calls to the provided 
+    affix_object's calls.
+    """
+    self.getmyip = affix_object.getmyip
+    self.gethostbyname = affix_object.gethostbyname
+    self.sendmessage = affix_object.sendmessage
+    self.listenformessage = affix_object.listenformessage
+    self.openconnection = affix_object.openconnection
+    self.listenforconnection = affix_object.listenforconnection
+
+
+  def pop(self):
+    """
+    Remove the top Affix component, then refresh our network 
+    call bindings.
+    """
+    old_next_affix = BaseAffix.pop(self)
+    _rebind_stack_network_calls(self, self.peek())
+    return old_next_affix
+
+
+  def push(self, new_affix_object):
+    """
+    Add a new top Affix component, then refresh our network 
+    call bindings.
+    """
+    BaseAffix.push(self, new_affix_object)
+    _rebind_stack_network_calls(self, self.peek())
+
+
 
 
 
@@ -346,9 +396,4 @@ def parse_affix_string(affix_str):
 
   # Return format is: (affix_name, affix_args_list, rest_of_affix_string)
   return (affix_name, affix_arg_list, affix_str)
-
-
-
-
-
 

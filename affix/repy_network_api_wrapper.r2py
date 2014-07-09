@@ -3,26 +3,24 @@ repy_network_api_wrapper.r2py
 
 This implements a class to represent the original Repy network call 
 definitions. It defines network calls like an Affix component (so 
-another component can point its methods to ours) but lacks the stack 
-manipulation methods (as it is destined to sit at the bottom of an
-Affix stack).
+another component can point its methods to ours) but raises 
+AffixStackError's when its stack manipulation methods are called 
+(as it is destined to sit immutably at the bottom of an Affix stack).
 
 This design was chosen so that Affix components need not worry 
 (i.e. special-case) whether or not the Repy API or further Affix 
 components are below them.
-
-Trying to access the stack manipulation methods currently raises an 
-AttributeError ("instance has no attribute '...'"). I'm not sure this 
-is how the final implementation should work.
 """
 
+# XXX Should we make BaseAffix our base class? 
+# XXX We are implementing its interface anyway...
 class RepyNetworkAPIWrapper:
   def __init__(self, next_affix=None):
     """
     The constructor. Must not be called with a next_affix, as this 
     would imply we are not at the bottom of the Affix stack.
     """
-    assert next_affix is None, "RepyNetworkAPIWrapper initialized with next_affix='" + str(next_affix) + "' (not None), implying it is not at the bottom of the Affix stack."
+    assert next_affix is None, self.__class__.__name__ + " initialized with next_affix='" + str(next_affix) + "' (not None), implying it is not at the bottom of the Affix stack."
 
     # Save references to the Repy network API calls of the outer scope
     self.getmyip = getmyip
@@ -32,10 +30,24 @@ class RepyNetworkAPIWrapper:
     self.openconnection = openconnection
     self.listenforconnection = listenforconnection
 
+
+  def peek(self):
+    raise AffixStackError("Cannot peek() past the bottom of the stack!")
+
+
+  def pop(self):
+    raise AffixStackError("Nothing left on the stack to pop() below me!")
+
+
+  def push(self, new_affix_object):
+    raise AffixStackError("Cannot push() " + str(new_affix_object) + 
+        "to below the bottom of the stack!")
+
+
   def get_advertisement_string(self):
     """
     RepyNetworkAPIWrapper is implicitly there at the bottom of 
     the stack. We don't advertise.
     """
-    return ''
+    return ""
 
