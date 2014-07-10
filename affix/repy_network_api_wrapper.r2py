@@ -12,9 +12,9 @@ This design was chosen so that Affix components need not worry
 components are below them.
 """
 
-# XXX Should we make BaseAffix our base class? 
-# XXX We are implementing its interface anyway...
-class RepyNetworkAPIWrapper:
+dy_import_module_symbols("baseaffix.r2py")
+
+class RepyNetworkAPIWrapper(BaseAffix):
   def __init__(self, next_affix=None):
     """
     The constructor. Must not be called with a next_affix, as this 
@@ -31,6 +31,38 @@ class RepyNetworkAPIWrapper:
     self.listenforconnection = listenforconnection
 
 
+  # Override BaseAffix's socket.* functions. (They use peek(), 
+  # we don't allow that. If we returned self on peek(), we wouldn't 
+  # need to override...)
+  def socket_close(self, socket):
+    return socket.close()
+
+
+  def socket_send(self, socket, msg):
+    return socket.send(msg)
+
+
+  def socket_recv(self, socket, bytes):
+    return socket.recv(bytes)
+
+
+  def tcpserversocket_getconnection(self, tcpserversocket):
+    return tcpserversocket.getconnection()
+
+
+  def tcpserversocket_close(self, tcpserversocket):
+    return tcpserversocket.close()
+
+
+  def udpserversocket_getmessage(self, udpserversocket):
+    return udpserversocket.getmessage()
+
+
+  def udpserversocket_close(self, udpserversocket):
+    return udpserversocket.close()
+
+
+  # Raise errors when someone tries to modify the stack below us.
   def peek(self):
     raise AffixStackError("Cannot peek() past the bottom of the stack!")
 
@@ -43,6 +75,13 @@ class RepyNetworkAPIWrapper:
     raise AffixStackError("Cannot push() " + str(new_affix_object) + 
         "to below the bottom of the stack!")
 
+  def copy(self):
+    """
+    I don't believe it makes sense to create a new RepyNetworkAPIWrapper 
+    object providing the same functionality as this one does....
+    """
+    return self
+
 
   def get_advertisement_string(self):
     """
@@ -51,3 +90,5 @@ class RepyNetworkAPIWrapper:
     """
     return ""
 
+  def __str__(self):
+    return repr(self).replace(' instance at', '')
