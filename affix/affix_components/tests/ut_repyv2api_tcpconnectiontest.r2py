@@ -1,4 +1,4 @@
-#pragma repy restrictions.affix dylink.repy
+#pragma repy restrictions.affix dylink.r2py
 
 # We print debug messages when run outside of utf.py, so make utf ignore them
 #pragma out
