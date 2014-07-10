@@ -1,8 +1,0 @@
-"TCP: Python recv/Python send" 52017.028
-"TCP: Python send/Repy recv" 36386.251
-"TCP: Python recv/Repy send" 24164.559
-"TCP: Repy recv/Repy send" 19379.844
-"UDP: Python recv/Python send" 21381.769
-"UDP: Python send/Repy recv" 21397.953
-"UDP: Python recv/Repy send" 6364.612
-"UDP: Repy recv/Repy send" 5611.120
