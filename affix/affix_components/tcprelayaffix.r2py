@@ -19,7 +19,7 @@
 dy_import_module_symbols("session.r2py")
 dy_import_module_symbols("baseaffix.r2py")
 sockettimeout = dy_import_module("sockettimeout.r2py")
-dy_import_module_symbols("affixstackinterface.r2py")
+dy_import_module_symbols("affix_stack.r2py")
 dy_import_module_symbols("tcp_relay_common_lib.r2py")
 advertise = dy_import_module("advertise.r2py") # for AdvertiseError
 cachedadvertise = dy_import_module("cachedadvertise.r2py")
@@ -71,13 +71,13 @@ class NatSockObj:
 class TCPRelayAffix(BaseAffix):
 
 
-  def __init__(self, affix_stack = AffixStack(), optional_args = None):
+  def __init__(self, next_affix, optional_args = None):
     """
     <Purpose>
       Initialize the TCPRelayAffix.
 
     <Arguments>
-      affix_stack - the affix stack underneath us.
+      next_affix - the Affix component underneath us.
 
       optional_args - the optional args if provided will be the 
         forwarder ip address and port that the user wants to use.
@@ -108,7 +108,7 @@ class TCPRelayAffix(BaseAffix):
     else:
       self.default_forwarder = []
 
-    BaseAffix.__init__(self, affix_stack, optional_args)
+    BaseAffix.__init__(self, next_affix, optional_args)
 
 
 

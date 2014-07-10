@@ -179,6 +179,7 @@ class CoordinationAffix(BaseAffix):
     Stops listening and stops advertising the server.
 
     """
+    log("coord is", repr(self), self.get_advertisement_string(), "\n")
     close_result = self.peek().tcpserversocket_close(tcpserversocket)
 
     # Now that we have closed the listener without any exceptions, we can safely
@@ -255,8 +256,9 @@ class CoordinationAffix(BaseAffix):
     # may advertise two different values under the same key because its affix
     # stack had somehow changed.
     for server_affix_stack_str in lookup_result_list:
-      # Build my affix stack and store it in the affix_context.
-      self.affix_context['next_affix'] = AffixStack(server_affix_stack_str, localhost).affix_stack_context['top_affix']
+      # Build the Affix stack required to contact the server and store it.
+      server_affix_stack = AffixStack(server_affix_stack_str)
+      self.affix_context['next_affix'] = server_affix_stack.affix_context['next_affix']
       if _COORDINATION_AFFIX_DEBUG_MODE:
         log(self, 'CoordinationAffix: Trying affix stack for openconnection: ', self.peek(), '\n')
       # Check if we have exceeded the time limit.
