@@ -32,8 +32,7 @@ class RepyNetworkAPIWrapper(BaseAffix):
 
 
   # Override BaseAffix's socket.* functions. (They use peek(), 
-  # we don't allow that. If we returned self on peek(), we wouldn't 
-  # need to override...)
+  # we don't allow that.)
   def socket_close(self, socket):
     return socket.close()
 
