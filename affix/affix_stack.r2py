@@ -26,13 +26,14 @@ bottom_of_stack = repy_network_api_wrapper.RepyNetworkAPIWrapper()
 
 class AffixStack(BaseAffix):
   def __init__(self, affix_string):
+    self.affix_context = {}
     top_affix = build_stack(affix_string)
     self.affix_context['next_affix'] = top_affix
 
     # Override this stack's network calls to use the top_affix's.
     # NOTE: We need to rebind on push()/pop() too, as the top_affix 
     # changes.
-    _rebind_stack_network_calls(top_affix)
+    self._rebind_stack_network_calls(top_affix)
 
 
   def get_advertisement_string(self):
@@ -58,7 +59,7 @@ class AffixStack(BaseAffix):
     call bindings.
     """
     old_next_affix = BaseAffix.pop(self)
-    _rebind_stack_network_calls(self, self.peek())
+    self._rebind_stack_network_calls(self, self.peek())
     return old_next_affix
 
 
@@ -68,7 +69,7 @@ class AffixStack(BaseAffix):
     call bindings.
     """
     BaseAffix.push(self, new_affix_object)
-    _rebind_stack_network_calls(self, self.peek())
+    self._rebind_stack_network_calls(self, self.peek())
 
 
 
