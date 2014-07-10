@@ -24,14 +24,14 @@ are chosen rather generously:
 #pragma repy restrictions.affix dylink.r2py
 #pragma out
 
-dy_import_module_symbols("affixstackinterface.r2py")
+dy_import_module_symbols("affix_stack.r2py")
 random = dy_import_module("random.r2py")
 
 # Set up the Affix stack to use, and override the network calls we need
-server_affix_object = AffixStackInterface("(CoordinationAffix)(MakeMeHearAffix)")
+server_affix_object = AffixStack("(CoordinationAffix)(MakeMeHearAffix)")
 listenforconnection = server_affix_object.listenforconnection
 
-client_affix_object = AffixStackInterface("(CoordinationAffix)")
+client_affix_object = AffixStack("(CoordinationAffix)")
 openconnection = client_affix_object.openconnection
 
 # Import the actual test

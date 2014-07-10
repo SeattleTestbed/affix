@@ -31,7 +31,6 @@
 
 
 dy_import_module_symbols("baseaffix.r2py")
-dy_import_module_symbols("affixmisc.r2py")
 dy_import_module_symbols("affix_stack.r2py")
 dy_import_module_symbols("affix_exceptions.r2py")
 advertise = dy_import_module("advertise.r2py") # For AdvertiseError
