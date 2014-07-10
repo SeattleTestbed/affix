@@ -2,6 +2,7 @@
 """
 
 dy_import_module_symbols("affix_exceptions.r2py")
+dy_import_module_symbols("baseaffix.r2py")
 repy_network_api_wrapper = dy_import_module("repy_network_api_wrapper.r2py")
 
 # This holds all the Affix component classes that have been

@@ -59,8 +59,7 @@ class BaseAffix:
       self.affix_context['optional_args']
     return reproduced_self
     """
-    raise AffixError(self.__class__.__name__ + 
-        " does not implement a copy() method!")
+    raise AffixError(repr(self) + " does not implement a copy() method!")
 
 
   def get_advertisement_string(self):
@@ -74,8 +73,7 @@ class BaseAffix:
     string.
 
     """
-    raise AffixError(self.__class__.__name__ + 
-        " does not implement a get_advertisement_string() method!")
+    raise AffixError(repr(self) + " does not implement a get_advertisement_string() method!")
 
 
 

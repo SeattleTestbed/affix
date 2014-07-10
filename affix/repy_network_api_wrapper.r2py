@@ -20,7 +20,7 @@ class RepyNetworkAPIWrapper:
     The constructor. Must not be called with a next_affix, as this 
     would imply we are not at the bottom of the Affix stack.
     """
-    assert next_affix is None, self.__class__.__name__ + " initialized with next_affix='" + str(next_affix) + "' (not None), implying it is not at the bottom of the Affix stack."
+    assert next_affix is None, "RepyNetworkAPIWrapper initialized with next_affix='" + str(next_affix) + "' (not None), implying it is not at the bottom of the Affix stack."
 
     # Save references to the Repy network API calls of the outer scope
     self.getmyip = getmyip
