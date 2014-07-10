@@ -259,6 +259,9 @@ class BaseAffix:
     return self.peek().getmyip()
 
 
+  def gethostbyname(self, name):
+    return self.peek().gethostbyname(name)
+
 
   def __str__(self):
     return '(%s)' % repr(self).replace(' instance at', '') + str(self.peek())
