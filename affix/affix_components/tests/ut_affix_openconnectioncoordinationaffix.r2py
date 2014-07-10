@@ -4,13 +4,13 @@ This test relies on the actual advertise services and NAT forwarders to
 run.
 If anything goes wrong, an exception is raised.
 """
-#pragma repy restrictions.affix dylink.repy
+#pragma repy restrictions.affix dylink.r2py
 #pragma out
 
-dy_import_module_symbols("affixstackinterface.repy")
+dy_import_module_symbols("affix_stack.r2py")
 
 # Set up the Affix stack to use, and override the network calls we need
-affix_object = AffixStackInterface("(CoordinationAffix)(TCPRelayAffix)")
+affix_object = AffixStack("(CoordinationAffix)(TCPRelayAffix)")
 listenforconnection = affix_object.listenforconnection
 openconnection = affix_object.openconnection
 

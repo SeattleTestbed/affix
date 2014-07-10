@@ -41,7 +41,7 @@ dy_import_module_symbols("ut_repyv2api_tcpconnectiontest.r2py")
 
 createthread(launch_server)
 # Wait a bit until the server has launched, advertised its Affix stack etc.
-sleep(30)
+sleep(15)
 createthread(connect_and_send_message)
 sleep(30)
 exitall()
