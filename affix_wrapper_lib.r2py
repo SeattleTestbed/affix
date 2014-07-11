@@ -1,18 +1,76 @@
 """
-<Program>
-  affix_wrapper_lib.r2py
+affix_wrapper_lib.r2py
 
-<Author>
-  Monzur Muhammad
+Provide various socket / API wrapper classes to the Affix framework, 
+including a wrapper for the Repy Network API that makes it look like 
+(i.e. mostly obey the call semantics of) an Affix component.
 
-<Purpose>
-  The purpose of this library is to provide various 
-  wrapper library that are used by the Affix framework.
+
+Why is wrapping useful?
+
+An Affix component will want to override the methods of socket objects 
+returned by getconnection, listenforconnection, openconnection, and/or 
+listenformessage in order to add its own functionality. The AffixSocket, 
+AffixTCPServerSocket, and AffixUDPServerSocket make it so that in your 
+Affix component, you define all of the desired functions on class level, 
+and they get linked to object methods as required.
+
+For example, instead of overriding listenforconnection *and* the TCP 
+server socket object it returns (variant 1), you list all of the methods 
+you want to override (variant 2) and let the wrappers, inherited from the 
+BaseAffix, do the mapping. 
+A possible downside of variant 1 is that it is more elaborate to write 
+(though at the same time it is more verbose as to what happens without 
+having to worry you understand the wrapper lib). 
+
+(AR: I would prefer the more explicit variant 1 by the way. It's not so 
+much more to write, but requires less to be known about the framework, 
+and has the required functionality all in one place. It would obsolete 
+most of this library, except for the RepyNetworkAPIWrapper).
+
+
+# Variant 1:
+class MyAffix(BaseAffix):
+  def listenforconnection(*args):
+    # Do the actual call to the lower layer to get the socket object
+    socketobject = self.peek().listenforconnection(args)
+
+    # Keep a reference to the socket's original method. This is 
+    # required for the closure in the desired method below to 
+    # work and not recurse infinitely.
+    socketobject_getconnection = socketobject.getconnection
+
+    # Define the desired method
+    def getconnection():
+      log("This is my implementation of getconnections.\n")
+      return socketobject_getconnection()
+
+    # Override the socket's method
+    socketobject.getconnection = getconnection
+
+    # Done!
+    return socketobject
+
+
+# Variant 2:
+class MyAffix(BaseAffix):
+  # I don't need to override listenforconnection in this case. 
+  # The default behavior, inherited from BaseAffix, does the 
+  # wrapping already!
+
+  def tcpserversocket_getconnection(self, tcpserversocket):
+    # This is automatically bound to the socket object at instantiation.
+    log("This is the other possible implementation of getconnection\n")
+    return tcpserversocket.getconnection()
+
+
+Variant 2 is what's currently implemented. I don't claim to have grasped 
+yet what ramifications the use of variant 1 would have on things like 
+copying Affix components.
 """  
 
 
 DEBUG_MODE = False
-zenodotus_subdomain = 'zenodotus.poly.edu'
 
 
 class AffixSocketWrapper:
@@ -113,237 +171,96 @@ class AffixSocket(AffixSocketWrapper):
 
 
 
+"""
+repy_network_api_wrapper.r2py
 
-# The RepyNetworkApiWrapper is a class that is used to wrap
-# around the entire Repy networkk API such that the AFFIX 
-# stack can escape and make the actual network call
+This implements a class to represent the original Repy network call 
+definitions. It defines network calls like an Affix component (so 
+another component can point its methods to ours) but raises 
+AffixStackError's when its stack manipulation methods are called 
+(as it is destined to sit immutably at the bottom of an Affix stack).
 
-class RepyNetworkApiWrapper:
-  """
-  <Purpose>
-    Create an object that has all the original repy network
-    call definitions. We escape the affix stack and call on
-    the actual repy network api.
-  """
+This design was chosen so that Affix components need not worry 
+(i.e. special-case) whether or not the Repy API or further Affix 
+components are below them.
+"""
 
-  def __init__(self):
+dy_import_module_symbols("baseaffix.r2py")
+
+class RepyNetworkAPIWrapper(BaseAffix):
+  def __init__(self, next_affix=None):
     """
-    Empty constructor.
+    The constructor. Must not be called with a next_affix, as this 
+    would imply we are not at the bottom of the Affix stack.
     """
-    pass
+    assert next_affix is None, "RepyNetworkAPIWrapper initialized with next_affix='" + str(next_affix) + "' (not None), implying it is not at the bottom of the Affix stack."
+
+    # Save references to the Repy network API calls of the outer scope
+    self.getmyip = getmyip
+    self.gethostbyname = gethostbyname
+    self.sendmessage = sendmessage
+    self.listenformessage = listenformessage
+    self.openconnection = openconnection
+    self.listenforconnection = listenforconnection
 
 
-  def gethostbyname(self, name):
-    """
-    The original repy gethostbyname call.
-    """
-    return lookup_address(name)
-
-
-  def getmyip(self):
-    """
-    The original repy getmyip call.
-    """
-    return getmyip()
-
-
-
-
-  def sendmessage(self, destip, destport, message, localip, localport):
-    """
-    The original repy sendmessage call.
-    """
-    # The destip can be a zenodotus name. We need to translate it to IP, because
-    # openconnection requires the destination IP address.
-    try:
-      destip = lookup_address(destip)
-    except NetworkAddressError:
-      raise RepyArgumentError("Unable to resolve destip '%s'" % destip)
-
-    try:
-      localip = lookup_address(localip)
-    except NetworkAddressError:
-      raise RepyArgumentError("Unable to resolve localip '%s'" % localip)
-
-    return sendmessage(destip, destport, message, localip, localport)
-
-
-  def listenformessage(self, localip, localport):
-    """
-    The original repy listenformessage call.
-    """
-    try:
-      localip = lookup_address(localip)
-    except NetworkAddressError:
-      raise RepyArgumentError("Unable to resolve localip '%s'" % localip)
-    return listenformessage(localip, localport)
-
-
-  def openconnection(self, destip, destport, localip, localport, timeout):
-    """
-    The original repy openconnection call.
-    """
-    # The destip can be a zenodotus name. We need to translate it to IP, because
-    # openconnection requires the destination IP address.
-    try:
-      destip = lookup_address(destip)
-    except NetworkAddressError:
-      raise RepyArgumentError("Unable to resolve destip '%s'" % destip)
-
-    try:
-      localip = lookup_address(localip)
-    except NetworkAddressError:
-      raise RepyArgumentError("Unable to resolve localip '%s'" % localip)
-
-
-    if DEBUG_MODE:
-      log("[Netcall:openconnection] Destip: %s, Destport: %d, Localip: %s," % (destip, destport, localip) + 
-          " Localport: %d, Timeout: %s\n" % (localport, str(timeout)))
-
-    return openconnection(destip, destport, localip, localport, timeout)
-
-
-  def listenforconnection(self, localip, localport):
-    """
-    The original repy listenforconnection call.
-    """
-    try:
-      localip = lookup_address(localip)
-    except NetworkAddressError:
-      raise RepyArgumentErrorError("Unable to resolve localip '%s'" % localip)
-
-    if DEBUG_MODE:
-      log("[Netcall:listenforconnection] Localip: %s, Localport: %d\n" % (localip, localport))
-
-    return listenforconnection(localip, localport)
-
-
+  # Override BaseAffix's socket.* functions. (They use peek(), 
+  # we don't allow that.)
   def socket_close(self, socket):
-    """
-    The close() call on the original socket object.
-    """
     return socket.close()
 
 
-
   def socket_send(self, socket, msg):
-    """
-    Send message by calling send() on the original socket.
-    """
-    if DEBUG_MODE:
-      log("[Netcall:socket.send] Socket: %s, Msg: %s\n" % (str(socket), msg))
     return socket.send(msg)
 
 
-
   def socket_recv(self, socket, bytes):
-    """
-    Receive message from the original socket.
-    """
-    return_msg = socket.recv(bytes)
-
-    if DEBUG_MODE:
-      log("[Netcall:socket.recv] Socket: %s, Msg: %s\n" % (str(socket), return_msg))
-
-    return return_msg
-
-
+    return socket.recv(bytes)
 
 
   def tcpserversocket_getconnection(self, tcpserversocket):
-    """
-    Call getconnection() on the original repy tcpserversocket.
-    """
-
-    rip, rport, sockect = tcpserversocket.getconnection()
-
-    if DEBUG_MODE:
-      log("[Netcall:tcpserver.getconnection] Socket: %s, Remoteip: %s, Remoteport: %d" % (str(socket), remoteip, remoteport))
-
-    return rip, rport, socket
-
+    return tcpserversocket.getconnection()
 
 
   def tcpserversocket_close(self, tcpserversocket):
-    """
-    Close the original tcpserversocket.
-    """
     return tcpserversocket.close()
 
 
-
   def udpserversocket_getmessage(self, udpserversocket):
-    """
-    Call the getmessage() call on the original udpserversocket.
-    """
     return udpserversocket.getmessage()
 
 
-
   def udpserversocket_close(self, udpserversocket):
-    """
-    Close the original udpserversocket.
-    """
     return udpserversocket.close()
+
+
+  # Raise errors when someone tries to modify the stack below us.
+  def peek(self):
+    raise AffixStackError("Cannot peek() past the bottom of the stack!")
+
+
+  def pop(self):
+    raise AffixStackError("Nothing left on the stack to pop() below me!")
+
+
+  def push(self, new_affix_object):
+    raise AffixStackError("Cannot push() " + str(new_affix_object) + 
+        "to below the bottom of the stack!")
+
+  def copy(self):
+    """
+    I don't believe it makes sense to create a new RepyNetworkAPIWrapper 
+    object providing the same functionality as this one does....
+    """
+    return self
 
 
   def get_advertisement_string(self):
     """
-    Returns the string used for advertisement of this affix.
-	"""
-    return ''
+    RepyNetworkAPIWrapper is implicitly there at the bottom of 
+    the stack. We don't advertise.
+    """
+    return ""
 
-  
   def __str__(self):
-    return '(%s)' % repr(self).replace(' instance at', '')
-
-
-
-
-MAX_LOOKUP_DEPTH = 5
-
-
-
-def lookup_address(hostname, lookup_depth=0):
-  """
-  <Purpose>
-    Lookup and resolve a hostname. If the hostname
-    is a zenodotus name then we must recursively look
-    up the name. Otherwise we just do a normal gethostbyname
-    lookup and return the ip address.
-
-  <Exception>
-    May return NetworkAdderssError if unable to do a lookup.
-  """
-  # We only do a maximum number of lookup, to ensure that
-  # we don't go into infinite recursion.
-  if lookup_depth > MAX_LOOKUP_DEPTH:
-    return hostname
-
-  if hostname.endswith(zenodotus_subdomain):
-    # We import cachedadvertise in the function rather than
-    # at the top of the file to address ticket #1407. This
-    # ensures that sockettimeout.repy is only imported when
-    # we call these functionalities. This will allow us to
-    # overload the Repy network API calls properly in 
-    # applications that use Affixes.
-    cachedadvertise = dy_import_module('cachedadvertise.r2py')
-    try:
-      # If we have found a value, we recursively check it
-      # in the case of one zenodotus address pointing to 
-      # another zenodotus address.
-      # Increase the depth before doing the next lookup.
-      lookup_depth += 1
-      return lookup_address(cachedadvertise.lookup(hostname)[0], lookup_depth)
-    except (NetworkAddressError, IndexError):
-      # If we get a NetworkAddressError, there isn't much we can
-      # do, so we just return.
-      # Similarly, if we get an IndexError then we failed to do a 
-      # lookup for the hostname.
-      return hostname
-
-
-  # If the hostname is not a zenodotus name, we just do a
-  # normal gethostbyname lookup. This may raise an error,
-  # but that is to be expected.
-  return gethostbyname(hostname)
+    return repr(self).replace(' instance at', '')
