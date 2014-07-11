@@ -1,0 +1,26 @@
+"""
+Verify that the NamingAndResolverAffix works, i.e. 
+* getmyip() returns the stack identifier that was set,
+* the identifier is announced,
+* network calls can be called with an ID instead of IP address.
+"""
+#pragma repy restrictions.affix dylink.r2py
+
+affix_stack = dy_import_module("affix_stack.r2py")
+advertise = dy_import_module("advertise.r2py")
+
+stack_id = "my-pseudorandom-desired-stack-id"
+
+teststack = affix_stack.AffixStack("(NamingAndResolverAffix," + stack_id + ")")
+
+# Does getmyip() return the desired ID?
+assert teststack.getmyip() == stack_id
+
+# Is our actual IP address also announced under the desired ID?
+lookup_results = advertise.advertise_lookup(stack_id)
+assert getmyip() in lookup_results
+
+# I need to force-exit because advertisepipe / NamingAndResolverAffix 
+# launched eternal threads...
+exitall()
+
