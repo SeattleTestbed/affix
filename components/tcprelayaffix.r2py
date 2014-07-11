@@ -139,10 +139,6 @@ class TCPRelayAffix(BaseAffix):
       raise ConnectionRefusedError("NAT forwarder is not specified. Cannot establish connection.")
 
 
-    # We will do a lookup on our localip, in case this is a zenodotus name.
-    # The function lookup_address is currently defined in affix_wrapper_lib
-    localip = lookup_address(localip)
-
     # Make a connection to the forwarder. Exceptions may be raised, if they are then we raise them.
     forwarder_ip, forwarder_port = self.default_forwarder
     if _NAT_AFFIX_DEBUG_MODE:
@@ -422,12 +418,6 @@ class TCPRelayAffix(BaseAffix):
       except (advertise.AdvertiseError, TimeoutError), e:
         raise AddressBindingError("Unable to connect to any NAT Forwarder due to error " + repr(e))
 
-
-
-    # We are going to do a lookup on the localip, in case it is 
-    # a zenodotus name.
-    # The function lookup_address is currently defined in affix_wrapper_lib
-    localip = lookup_address(localip)
 
     # Now that we have a list of forwarders, try to connect to each one until
     # we successfully do. 
