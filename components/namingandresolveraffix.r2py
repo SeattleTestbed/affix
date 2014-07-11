@@ -51,6 +51,66 @@ class NamingAndResolverAffix(BaseAffix):
       self.affix_context['stack ID'] = optional_args[0]
     except (TypeError, IndexError):
       pass
+    else:
+      # We have a stack ID. Announce it and the current node IP.
+      def monitor_ip_and_announce_id():
+        # This gives us a fast local cache for announcements, and 
+        # also continuously readvertises items.
+        advertise = dy_import_module("advertise.r2py")
+        advertisepipe = dy_import_module("advertisepipe.r2py")
+
+        # Check every CHECK_INTERVAL seconds for address changes
+        CHECK_INTERVAL = 1
+
+        # Announced mappings last for ADVERTISE_TTL seconds
+        ADVERTISE_TTL = advertisepipe.TTL
+
+        # Re-announce after at most REDO_INTERVAL seconds
+        REDO_INTERVAL = ADVERTISE_TTL/2
+
+        previous_ip = None
+        current_ip = None
+        advertisepipe_handle = None
+
+        while True:
+          try:
+            # We cannot raise exceptions to anyone because we will be 
+            # running as a thread. We'll catch everything, sleep, retry.
+            try:
+              current_ip = self.peek().getmyip()
+            except InternetConnectivityError:
+              sleep(CHECK_INTERVAL)
+              continue
+            else:
+              # We got our current_ip. If it change since we last checked, 
+              # we announce it anew and let advertisepipe take it. 
+              # Note: I take AdvertiseError's to mean that we should 
+              # not yet replace previous_ip with current_ip because we 
+              # weren't yet able to announce the new mapping.
+              if current_ip != previous_ip:
+                # Advertise the new mapping
+                # XXX This is necessary because advertisepipe doesn't 
+                # XXX announce new items when they are added to its pipe, 
+                # XXX but only caches them at first.
+                advertise.advertise_announce(self.affix_context["stack ID"], 
+                    current_ip, ADVERTISE_TTL)
+
+                # Remove the old mapping from advertisepipe, and 
+                # add the new one. 
+                advertisepipe.remove_from_pipe(advertisepipe_handle)
+                advertisepipe_handle = advertisepipe.add_to_pipe(
+                    self.affix_context["stack ID"], current_ip)
+
+                # Lastly, remember the current IP for the next check.
+                previous_ip = current_ip
+
+          except Exception, e:
+            log(repr(e), "\n")
+            sleep(CHECK_INTERVAL)
+
+      # (Back to NamingAndResolverAffix's constructor...)
+      createthread(monitor_ip_and_announce_id)
+
 
   
   # ===========================================================================
@@ -61,7 +121,7 @@ class NamingAndResolverAffix(BaseAffix):
   def copy(self):
     reference_to_copy_of_next_affix = self.affix_context['next_affix'].copy()
     reproduced_self = self.__init__(reference_to_copy_of_next_affix, 
-      self.affix_context['optional_args']
+      self.affix_context['optional_args'])
     return reproduced_self
 
 
@@ -71,12 +131,14 @@ class NamingAndResolverAffix(BaseAffix):
 
 
   def sendmessage(self, destip, destport, message, localip, localport):
-    return self.peek().sendmessage(destip, destport, message, localip, localport)
+    return self.peek().sendmessage(resolve_identifier(destip), destport, 
+        message, resolve_identifier(localip), localport)
 
 
 
   def listenformessage(self, localip, localport):
-    next_layer_socket = self.peek().listenformessage(localip, localport)
+    next_layer_socket = self.peek().listenformessage(
+        resolve_identifier(localip), localport)
     return AffixUDPServerSocket(next_layer_socket, self)
 
 
@@ -85,7 +147,9 @@ class NamingAndResolverAffix(BaseAffix):
     # We make a copy of ourselves before we do anything as we may have multiple
     # openconnection calls that return multiple real sockets.
     #this_affix_copy = self.copy()
-    next_sockobj = self.peek().openconnection(destip, destport, localip, localport, timeout)
+    next_sockobj = self.peek().openconnection(
+        resolve_identifier(destip), destport, 
+        resolve_identifier(localip), localport, timeout)
     
     return AffixSocket(next_sockobj, self)
 
@@ -94,7 +158,8 @@ class NamingAndResolverAffix(BaseAffix):
   def listenforconnection(self, localip, localport):
     # TODO: Not sure if we have to make a copy of self before retrieving
     # the next layer.
-    next_layer_socket = self.peek().listenforconnection(localip, localport)
+    next_layer_socket = self.peek().listenforconnection(
+        resolve_identifier(localip), localport)
     return AffixTCPServerSocket(next_layer_socket, self)
 
 
@@ -140,39 +205,52 @@ class NamingAndResolverAffix(BaseAffix):
     return self.peek().udpserversocket_close(udpserversocket)
 
 
+
   def getmyip(self):
-    return self.peek().getmyip()
+    """
+    Return the stack ID (if set), or the lower layer's getmyip() otherwise.
+    """
+    try:
+      return self.affix_context['stack ID']
+    except KeyError:
+      return self.peek().getmyip()
 
 
   def gethostbyname(self, name):
-    return self.peek().gethostbyname(name)
+    """
+    Since one of this Affix component's tasks is to resolve, we'll do just that!
+    """
+    return resolve_identifier(name)
 
 
   def __str__(self):
     return '(%s)' % repr(self).replace(' instance at', '') + str(self.peek())
 
 
-def resolve_identifier(identifier, remaining_iterations=10):
+
+
+random = dy_import_module("random.r2py")
+
+def resolve_identifier(identifier):
   """
   <Purpose>
     Resolve an identifier to an IP address. 
     Try first to look it up using cachedadvertise (which queries 
-    a local cache, then proceeds to the Seattle advertise services), 
-    do that repeatedly if required. If the advertise services 
-    don't succeed, turn to DNS.
+    a local cache, then proceeds to the Seattle advertise services). 
+    If the advertise services don't succeed, turn to DNS. 
+    Consequently, Seattle's advertise services take precedence. 
+    Note that this allows for funny tricks like advertising 
+    wellknown-domain.com to point to an IP address you control...
 
-    Implementation detail: 
-    To prevent lookup loops, resolve_identifier decreases 
-    remaining_iterations on every recursive call, and returns once 
-    it reaches zero.
-    This is also a crude way to ensure the function works if an 
-    advertised key points to itself, or we gethostbyname() an IP 
-    address, which results in the same IP address.
-    If this turns out to work too slowly, we can add a previous_result 
-    parameter, and break on identifier == previous_result.
+    We don't currently attempt to resolve recursively, i.e. 
+    advertised keys pointing to other keys don't work.
+    This implicitly means that the identifiers involved here be 
+    either FQDNs or IP addresses (resolved / passed unchanged by 
+    gethostbyname), or advertised keys pointing at (lists of) 
+    IP addresses.
 
   <Exception>
-    NetworkAddressError if unable to do a lookup.
+    NetworkAddressError if unable to do a lookup (like gethostbyname())
   """
 
   # XXX Caution, hack ahead!
@@ -185,32 +263,30 @@ def resolve_identifier(identifier, remaining_iterations=10):
   cachedadvertise = dy_import_module('cachedadvertise.r2py')
   # End hack.
 
-  try:
-    # Look up the identifier in the local advertise cache 
-    # (and subsequently in Seattle's advertise services).
-    results = cachedadvertise.lookup(identifier)
-
-    if results:
-      # There is at least one result. Pick a random one, and try to 
-      # resolve it until we exceed the recursion depth.
-      my_pick = random.random_sample(results, 1)
-      return resolve_identifier(my_pick, remaining_iterations)
-
-  except cachedadvertise.AdvertiseError:
-    # Retry!
-    sleep(0.2)
-    return resolve_identifier(my_pick, remaining_iterations)
-
-  # Avoid resolve loops.
-  remaining_iterations -= 1
-  if remaining_iterations <= 0:
+  for retries in range(2):
     try:
-      return gethostbyname(identifier)
-    except NetworkAddressError:
-      return identifier
+      # Look up the identifier in the local advertise cache 
+      # (and subsequently in Seattle's advertise services).
+      results = cachedadvertise.lookup(identifier)
 
-  # If the hostname is not a zenodotus name, we just do a
-  # normal gethostbyname lookup. This may raise an error,
-  # but that is to be expected.
-  return gethostbyname(hostname)
+      if results:
+        # There is at least one result. Pick a random one, and try to 
+        # resolve it until we exceed the recursion depth.
+        my_pick = random.random_sample(results, 1)
+        return my_pick
+
+    except TimeoutError:
+      # Retry!
+      sleep(0.2)
+    except Exception, e:
+      # XXX Hack! We cannot currently catch imported exceptions like 
+      # XXX AdvertiseError correctly when dylink+repyportability are used...
+      # See https://github.com/SeattleTestbed/portability/issues/28
+
+      # Retry!
+      sleep(0.2)
+
+  else:
+    # No success from advertise services, try DNS.
+    return gethostbyname(identifier)
 
