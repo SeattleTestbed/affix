@@ -18,14 +18,14 @@ class BaseAffix:
   def __init__(self, next_affix, optional_args=None):
     """
     <Purpose>
-      Initialize this particular affix.
+      Initialize this particular Affix component.
 
     <Arguments>
       next_affix - The Affix component that resides beneath
           the current component in the stack.
 
       optional_args - Any optional argument that this particular 
-          Affix componet takes.
+          Affix component takes.
 
     <Side Effects>
       None
