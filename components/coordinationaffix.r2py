@@ -208,109 +208,17 @@ class CoordinationAffix(BaseAffix):
 
 
   def listenformessage(self, localip, localport):
-    # XXX Currently untested!
-    """
-    <Purpose>
-      Listens for incoming connections. Advertises the affix stack when the
-      listener is ready.
-
-    <Arguments>
-      Same as the network API in repy v2.
-
-    <Side Effects>
-      See the documentation of AdvertiseObjects.
-
-    <Exceptions>
-      Same as the network API in repy v2.    
-
-    <Returns>      
-      Same as the network API in repy v2.    
-
-    """
-    # Start listening so we have a complete view of the affix stack below us.
-    udpserversocket = self.peek().listenformessage(localip, localport)
-
-    # The underlying affix stack has been built completely. We can advertise the
-    # affix stack.
-    adv_key = str(localip) + ',' + str(localport) + ',UDP'
-    adv_value = self.peek().get_advertisement_string()
-    adv_handle = advertisepipe.add_to_pipe(adv_key, adv_value)
- 
-
-    if _COORDINATION_AFFIX_DEBUG_MODE:
-      log(self, 'CoordinationAffix: Advertised', adv_key, adv_value, '\n')
-
-    # We need to save the advertisement handle to a global dictionary, so that
-    # we can keep a reference to the handle. Later on, when we stop listening,
-    # we can conveniently remove this key value pair from the advertisement
-    # service by using this handle.
-    self._adv_handle_dict_lock.acquire(True)
-    self._adv_handle_dict[repr(udpserversocket)] = adv_handle
-    self._adv_handle_dict_lock.release()
-
-    return AffixUDPServerSocket(udpserversocket, self)
+    raise "CoordinationAffix.listenformessage is currently unimplemented!"
 
 
 
   def udpserversocket_close(self, udpserversocket):
-    """
-    Stops listening and stops advertising the server.
-
-    """
-    close_result = self.peek().udpserversocket_close(udpserversocket)
-
-    # Now that we have closed the listener without any exceptions, we can safely
-    # stop the advertisement.
-    self._stop_advertisement(udpserversocket)
-
-    return close_result
+    raise "CoordinationAffix.udpserversocket_close is currently unimplemented!"
 
 
 
   def sendmessage(self, destip, destport, message, localip, localport):
-    # XXX Currently untested!
-    """
-    <Purpose>
-      Looks up the string representation of the server's affix stack. Constructs
-      the same affix stack and connects to the server. If the server's affix stack
-      is not found, connects without using affixs for backward compatibility.
-
-    <Arguments>
-      Same as the network API in repy v2.
-
-    <Side Effects>
-      See the documentation of AdvertiseObjects.
-
-    <Exceptions>
-      Same as the network API in repy v2.    
-
-    <Returns>      
-      Same as the network API in repy v2.    
-
-    """
-    # Key under which we look up the server's affix stack
-    server_key = str(destip) + ',' + str(destport) + ',UDP'
-
-    # Now we obtain the server's affix stack string representation from which we
-    # will construct the client's affix stack. 
-    lookup_result_list = cachedadvertise.lookup(server_key)
-
-
-    if lookup_result_list:
-      # We assume that the last result in the list returned contains 
-      # the most up-to-date server affix stack string. We build a new 
-      # Affix stack based on it.
-      server_affix_stack_str = lookup_result_list.pop()
-      self.affix_context['affix_stack'] = AffixStack(server_affix_stack_str)
-      
-      # Send the message using the new affix stack.
-      return self.peek().sendmessage(destip, destport, message, localip, localport)
-
-    else:
-
-      # It is possible we're contacting a legacy server that doesn't use
-      # affixs. Thus, we contact it without affixs.
-      return sendmessage(destip, destport, message, localip, localport)
+    raise "CoordinationAffix.sendmessage is currently unimplemented!"
 
 
 
