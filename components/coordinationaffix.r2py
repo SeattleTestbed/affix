@@ -196,7 +196,7 @@ class CoordinationAffix(BaseAffix):
     # It is possible we're contacting a server that doesn't use Affixes,
     # doesn't advertise itself, or advertised stacks that didn't work 
     # for us. Thus, we contact it without Affixes.
-    empty_affix_stack = AffixStack()
+    empty_affix_stack = AffixStack("")
     sock = empty_affix_stack.openconnection(destip, destport, localip, localport, timeout)
     return AffixSocket(sock, self.copy())
 
