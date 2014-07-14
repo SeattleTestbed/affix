@@ -13,12 +13,13 @@ stack_id = "my-pseudorandom-desired-stack-id"
 
 teststack = affix_stack.AffixStack("(NamingAndResolverAffix," + stack_id + ")")
 
-# Does getmyip() return the desired ID?
-assert teststack.getmyip() == stack_id
 
-# Is our actual IP address also announced under the desired ID?
+affix_getmyip = teststack.getmyip()
+assert affix_getmyip == stack_id, "Affix stack's getmyip() returned '" + str(affix_getmyip) + "', not the set stack_id '" + str(stack_id) + "'."
+
 lookup_results = advertise.advertise_lookup(stack_id)
-assert getmyip() in lookup_results
+actual_ip = getmyip()
+assert actual_ip in lookup_results, "Could not find my actual IP address '" + str(actual_ip) + "' in advertise's lookup results '" + str(lookup_results) + "'."
 
 # I need to force-exit because advertisepipe / NamingAndResolverAffix 
 # launched eternal threads...
