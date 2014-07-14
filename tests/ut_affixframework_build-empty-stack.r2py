@@ -1,0 +1,14 @@
+"""
+Build an "empty" Affix stack. It should implicitly make the Repy network 
+API calls available. If the getmyip() works afterwards, consider this 
+a success.
+"""
+#pragma repy restrictions.affix dylink.r2py
+#pragma out
+
+affix_stack = dy_import_module("affix_stack.r2py")
+
+teststack = affix_stack.build_stack("")
+
+teststack.getmyip()
+
