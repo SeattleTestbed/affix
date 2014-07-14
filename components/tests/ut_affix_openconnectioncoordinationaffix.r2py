@@ -22,3 +22,6 @@ createthread(launch_server)
 sleep(5)
 createthread(connect_and_send_message)
 
+sleep(10)
+exitall()
+
