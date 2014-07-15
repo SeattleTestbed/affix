@@ -1,6 +1,6 @@
-dy_import_module_symbols("baseaffix.r2py")
+baseaffix = dy_import_module("baseaffix.r2py")
 
-class NoopAffix(BaseAffix):
+class NoopAffix(baseaffix.BaseAffix):
   """
   A affix that does nothing (no-operation). For debug purpose only.
 

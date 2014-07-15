@@ -12,9 +12,9 @@ This design was chosen so that Affix components need not worry
 components are below them.
 """
 
-dy_import_module_symbols("baseaffix.r2py")
+base_affix = dy_import_module("baseaffix.r2py")
 
-class RepyNetworkAPIWrapper(BaseAffix):
+class RepyNetworkAPIWrapper(base_affix.BaseAffix):
   def __init__(self, next_affix=None):
     """
     The constructor. Must not be called with a next_affix, as this 

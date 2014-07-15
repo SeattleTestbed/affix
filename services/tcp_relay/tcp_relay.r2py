@@ -19,11 +19,11 @@
     [ NAT_FORWARDER_KEY ]
 """
 
-dy_import_module_symbols("session.r2py")
+session = dy_import_module("session.r2py")
 advertisepipe = dy_import_module("advertisepipe.r2py")
-dy_import_module_symbols("affixstackinterface.r2py")
+affix_stack = dy_import_module("affix_stack.r2py")
 dy_import_module_symbols("tcp_relay_common_lib.r2py")
-iplib = dy_import_module("checkprivateipaffix.r2py")
+canilisten = dy_import_module("canilisten.r2py")
 time = dy_import_module("time.r2py")
 
 
@@ -618,12 +618,14 @@ if callfunc == 'initialize':
   
   myip, myport = getmyip(), str(mycontext['listenport_tcp'])
 
-  if iplib.is_private_ipv4_address(getmyip()):
+  (i_can_listen, ignore, ignore) = canilisten.check_specific_port(myport)
+
+  if not i_can_listen:
     logmsg(
-"""NOTE WELL: You are trying to run a NAT forwarder on a private IP address. 
-This leaves the forwarder uncontactable from the public Internet unless 
-you set up port forwarding etc. on your NAT gateway. I'll let you proceed 
-regardless. You hopefully know what you do.""", ERR_MSG)
+"""NOTE WELL: It seems that your node is not able to receive incoming 
+connections from the public Internet. This probably leaves the TCP relay 
+uncontactable unless you set up port forwarding etc. on your gateway. 
+I'll let you proceed regardless. You hopefully know what you do.""", ERR_MSG)
   
   # Launch the TCP Forwarder.
   logmsg("Creating forwarder thread on " + myip + ":" + str(myport), INFO_MSG)

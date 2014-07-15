@@ -5,11 +5,8 @@ Defines the interface that every Affix component has to extend
 and implement.
 """
 
-# Import all the exceptions.
-dy_import_module_symbols("affix_exceptions.r2py")
-
 # Import all the wrapper classes.
-dy_import_module_symbols("affix_wrapper_lib.r2py")
+affix_wrapper_lib = dy_import_module("affix_wrapper_lib.r2py")
 
 
 
@@ -192,7 +189,7 @@ class BaseAffix:
 
   def listenformessage(self, localip, localport):
     next_layer_socket = self.peek().listenformessage(localip, localport)
-    return AffixUDPServerSocket(next_layer_socket, self)
+    return affix_wrapper_lib.AffixUDPServerSocket(next_layer_socket, self)
 
 
 
@@ -202,7 +199,7 @@ class BaseAffix:
     #this_affix_copy = self.copy()
     next_sockobj = self.peek().openconnection(destip, destport, localip, localport, timeout)
     
-    return AffixSocket(next_sockobj, self)
+    return affix_wrapper_lib.AffixSocket(next_sockobj, self)
 
 
 
@@ -210,7 +207,7 @@ class BaseAffix:
     # TODO: Not sure if we have to make a copy of self before retrieving
     # the next layer.
     next_layer_socket = self.peek().listenforconnection(localip, localport)
-    return AffixTCPServerSocket(next_layer_socket, self)
+    return affix_wrapper_lib.AffixTCPServerSocket(next_layer_socket, self)
 
 
 
@@ -237,7 +234,7 @@ class BaseAffix:
     this_affix_copy = self.copy()
     (remote_ip, remote_port, repy_socket) = this_affix_copy.peek().tcpserversocket_getconnection(tcpserversocket)
 
-    return (remote_ip, remote_port, AffixSocket(repy_socket, self))
+    return (remote_ip, remote_port, affix_wrapper_lib.AffixSocket(repy_socket, self))
 
 
 

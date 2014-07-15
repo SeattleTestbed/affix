@@ -21,9 +21,9 @@ stack, so that it can see the content of the rest of the stack.
 
 """
 
-dy_import_module_symbols("baseaffix.r2py")
-dy_import_module_symbols("affix_exceptions.r2py")
-dy_import_module_symbols("affix_stack.r2py")
+baseaffix = dy_import_module("baseaffix.r2py")
+affix_stack = dy_import_module("affix_stack.r2py")
+affix_wrapper_lib = dy_import_module("affix_wrapper_lib.r2py")
 cachedadvertise = dy_import_module("cachedadvertise.r2py")
 advertisepipe = dy_import_module("advertisepipe.r2py")
 
@@ -31,7 +31,7 @@ advertisepipe = dy_import_module("advertisepipe.r2py")
 _COORDINATION_AFFIX_DEBUG_MODE = False
 
 
-class CoordinationAffix(BaseAffix):
+class CoordinationAffix(baseaffix.BaseAffix):
 
   # A dictionary that maps a server socket object to the corresponding
   # advertisement handle. We need to save all the handles that are created as
@@ -106,7 +106,7 @@ class CoordinationAffix(BaseAffix):
     # we can keep a reference to the handle. Later on, when we stop listening,
     # we can conveniently remove this key value pair from the advertisement
     # service by using this handle.
-    if isinstance(tcpserversocket, AffixTCPServerSocket):
+    if isinstance(tcpserversocket, affix_wrapper_lib.AffixTCPServerSocket):
       adv_handle_key = repr(tcpserversocket._socket)
     else:
       adv_handle_key = repr(tcpserversocket)
@@ -115,7 +115,7 @@ class CoordinationAffix(BaseAffix):
     self._adv_handle_dict[adv_handle_key] = adv_handle
     self._adv_handle_dict_lock.release()
 
-    return AffixTCPServerSocket(tcpserversocket, self)
+    return affix_wrapper_lib.AffixTCPServerSocket(tcpserversocket, self)
 
 
 
@@ -178,7 +178,7 @@ class CoordinationAffix(BaseAffix):
     # stack had somehow changed.
     for server_affix_stack_str in lookup_result_list:
       # Build the Affix stack required to contact the server and store it.
-      server_affix_stack = AffixStack(server_affix_stack_str)
+      server_affix_stack = affix_stack.AffixStack(server_affix_stack_str)
       self.affix_context['next_affix'] = server_affix_stack.affix_context['next_affix']
       if _COORDINATION_AFFIX_DEBUG_MODE:
         log(self, "Using affix string: " + self.peek().get_advertisement_string() + "to connect to '" +
@@ -186,7 +186,7 @@ class CoordinationAffix(BaseAffix):
 
       try:
         sock = self.peek().openconnection(destip, destport, localip, localport, timeout)
-        return AffixSocket(sock, self.copy())
+        return affix_wrapper_lib.AffixSocket(sock, self.copy())
 
       # We ignore the error here, as we may have been contacting a legacy
       # server. Later, we're going to retry without affixs.
@@ -198,7 +198,7 @@ class CoordinationAffix(BaseAffix):
     # for us. Thus, we contact it without Affixes.
     empty_affix_stack = AffixStack("")
     sock = empty_affix_stack.openconnection(destip, destport, localip, localport, timeout)
-    return AffixSocket(sock, self.copy())
+    return affix_wrapper_lib.AffixSocket(sock, self.copy())
 
 
 

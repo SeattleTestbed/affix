@@ -1,9 +1,9 @@
 """
 """
 
-dy_import_module_symbols("affix_exceptions.r2py")
-dy_import_module_symbols("baseaffix.r2py")
-repy_network_api_wrapper = dy_import_module("repy_network_api_wrapper.r2py")
+affix_exceptions = dy_import_module("affix_exceptions.r2py")
+base_affix = dy_import_module("baseaffix.r2py")
+affix_repy_network_api_wrapper = dy_import_module("affix_repy_network_api_wrapper.r2py")
 
 # This holds all the Affix component classes that have been
 # registered. This dictionary is shared globally by all Affix stacks
@@ -20,11 +20,11 @@ affix_register_lock = createlock()
 # stack manipulation calls which raise errors) so that higher-layer 
 # components need not perform special checks before handing 
 # calls downwards.
-bottom_of_stack = repy_network_api_wrapper.RepyNetworkAPIWrapper()
+bottom_of_stack = affix_repy_network_api_wrapper.RepyNetworkAPIWrapper()
 
 
 
-class AffixStack(BaseAffix):
+class AffixStack(base_affix.BaseAffix):
   def __init__(self, affix_string):
     self.affix_context = {}
     top_affix = build_stack(affix_string)

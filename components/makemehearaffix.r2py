@@ -30,16 +30,17 @@
 """
 
 
-dy_import_module_symbols("baseaffix.r2py")
-dy_import_module_symbols("affix_stack.r2py")
-dy_import_module_symbols("affix_exceptions.r2py")
+baseaffix = dy_import_module("baseaffix.r2py")
+affix_stack = dy_import_module("affix_stack.r2py")
+affix_exceptions = dy_import_module("affix_exceptions.r2py")
+affix_wrapper_lib = dy_import_module("affix_wrapper_lib.r2py")
 advertise = dy_import_module("advertise.r2py") # For AdvertiseError
 cachedadvertise = dy_import_module("cachedadvertise.r2py")
 canilisten = dy_import_module("canilisten.r2py")
 
 
 
-class MakeMeHearAffix(BaseAffix):
+class MakeMeHearAffix(baseaffix.BaseAffix):
   """
   This Affix component lets this host ``hear'', i.e. receive 
   incoming connections from remote nodes, even if you are behind a 
@@ -54,9 +55,11 @@ class MakeMeHearAffix(BaseAffix):
   to override the default Affixes.
   """
   def __init__(self, next_affix, optional_args):
+    self.next_affix = next_affix
+
     # Work around #51, defaults for constructor parameters are overwritten
     default_cannot_hear_affix_string = "(TCPRelayAffix)" 
-    default_can_hear_affix_string = "(NoopAffix)"
+    default_can_hear_affix_string = ""
     if optional_args == []:
       optional_args = [default_cannot_hear_affix_string]
 
@@ -69,7 +72,7 @@ class MakeMeHearAffix(BaseAffix):
     self.cannot_hear_affix_string = optional_args[0]
     self.can_hear_affix_string = optional_args[1]
 
-    BaseAffix.__init__(self, next_affix, optional_args)
+    baseaffix.BaseAffix.__init__(self, next_affix, optional_args)
 
 
 
@@ -103,7 +106,7 @@ class MakeMeHearAffix(BaseAffix):
       # The user must expect these from plain listenforconnection, 
       # so we raise them.
       raise
-    except (advertise.AdvertiseError, canilisten.CanIListenError), e:
+    except (advertise.AdvertiseError, canilisten.CanIListenError, TimeoutError), e:
       # XXX Can't catch AdvertiseError???
 
       # These mean we couldn't find/contact canilisten servers. 
@@ -132,15 +135,15 @@ class MakeMeHearAffix(BaseAffix):
     else:
       designated_affix_string = self.cannot_hear_affix_string
 
-    designated_affix_name, designated_affix_args, junk = parse_affix_string(
+    designated_affix_name, designated_affix_args, junk = affix_stack.parse_affix_string(
         designated_affix_string)
 
     log("Can hear:", can_hear_on_localport, "Designated affix:", designated_affix_name, "\n")
     try:
-      find_and_register_affix(designated_affix_name)
-      designated_affix_object = create_affix_object(designated_affix_name, 
-          designated_affix_args, None)
-    except (AffixNotFoundError, AffixStackError), e:
+      affix_stack.find_and_register_affix(designated_affix_name)
+      designated_affix_object = affix_stack.create_affix_object(
+          designated_affix_name, designated_affix_args, self.next_affix)
+    except (affix_exceptions.AffixNotFoundError, affix_exceptions.AffixStackError), e:
       raise AddressBindingError("MakeMeHearAffix problem with " + 
           "finding, registering, or instantiating designated Affix '" + 
 	  designated_affix_string + "': " + repr(e))
@@ -173,7 +176,7 @@ class MakeMeHearAffix(BaseAffix):
 
     # If we end up here, all is well, the Affix listens for 
     # connection. Return it!
-    return AffixTCPServerSocket(tcpserversocket, self)
+    return affix_wrapper_lib.AffixTCPServerSocket(tcpserversocket, self)
 
 
 

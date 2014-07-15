@@ -1,25 +1,25 @@
-#!python
 """
-<Purpose>
-  The purpose of the NAT Punch Affix is to allow a machine that is behind
-  a NAT to be accessed. The way it works is that the machine that is
-  behind a NAT (or some sort of firewall) will make a connection to a
-  Nat Forwarder machine and wait for incoming traffic. A Nat Forwarder
-  machine is a special machine that is not behind NAT and can be accessed
-  by both the server and the client.
+tcprelayaffix.r2py
 
-<Author>
-  Monzur Muhammad
-  monzum@cs.washington.edu
+The purpose of the TCPRelayAffix is to allow a machine that is behind
+a NAT or firewall to be accessed. The way it works is that the machine 
+to be connected to will make a connection to a TCP relay machine and 
+wait for incoming traffic. A TCP relay is a special machine that is not 
+behind NAT or firewall and can be accessed by both the server and the client.
 
-<Started>
-  1st June 2011
+TODO:
+Remove references to "NAT forwarding".
 """
 
-dy_import_module_symbols("session.r2py")
-dy_import_module_symbols("baseaffix.r2py")
+session = dy_import_module("session.r2py")
+baseaffix = dy_import_module("baseaffix.r2py")
+
+# Needed to do stack_id-to-IP-address translation
+namingandresolveraffix = dy_import_module("namingandresolveraffix.r2py")
+
 sockettimeout = dy_import_module("sockettimeout.r2py")
-dy_import_module_symbols("affix_stack.r2py")
+affix_stack = dy_import_module("affix_stack.r2py")
+affix_wrapper_lib = dy_import_module("affix_wrapper_lib.r2py")
 dy_import_module_symbols("tcp_relay_common_lib.r2py")
 advertise = dy_import_module("advertise.r2py") # for AdvertiseError
 cachedadvertise = dy_import_module("cachedadvertise.r2py")
@@ -68,7 +68,7 @@ class NatSockObj:
     return self._server_id
 
 
-class TCPRelayAffix(BaseAffix):
+class TCPRelayAffix(baseaffix.BaseAffix):
 
 
   def __init__(self, next_affix, optional_args = None):
@@ -108,7 +108,7 @@ class TCPRelayAffix(BaseAffix):
     else:
       self.default_forwarder = []
 
-    BaseAffix.__init__(self, next_affix, optional_args)
+    baseaffix.BaseAffix.__init__(self, next_affix, optional_args)
 
 
 
@@ -156,8 +156,8 @@ class TCPRelayAffix(BaseAffix):
     server_id = "%s:%d" % (destip, destport)
 
     try:
-      session_sendmessage(sockobj, "%s,%s" % (CONNECT_CLIENT_TAG, server_id)) 
-      confirmation_msg = session_recvmessage(sockobj)
+      session.session_sendmessage(sockobj, "%s,%s" % (CONNECT_CLIENT_TAG, server_id)) 
+      confirmation_msg = session.session_recvmessage(sockobj)
     except sockettimeout.SocketTimeoutError:
       # If the sockettimeout expires, raise this as a TimeoutError 
       # (emulating what happens when the plain openconnection 
@@ -218,7 +218,7 @@ class TCPRelayAffix(BaseAffix):
       raise DuplicateTupleError(repr(err))
 
     connection_control_sockobj = NatSockObj(connection_socket, server_id)
-    return AffixTCPServerSocket(connection_control_sockobj, self)  
+    return affix_wrapper_lib.AffixTCPServerSocket(connection_control_sockobj, self)  
     
 
 
@@ -260,8 +260,8 @@ class TCPRelayAffix(BaseAffix):
     # Ask the server if there is any connection that can be made and get back
     # the response.
     try:
-      session_sendmessage(nat_serversocket, CHECK_SERVER_CONN)
-      nat_response = session_recvmessage(nat_serversocket)
+      session.session_sendmessage(nat_serversocket, CHECK_SERVER_CONN)
+      nat_response = session.session_recvmessage(nat_serversocket)
 
     except SocketClosedRemote, e:
       # Trying to reconnect doesn't make sense (DuplicateTupleError, or 
@@ -347,8 +347,8 @@ class TCPRelayAffix(BaseAffix):
     # we just opened up. Then we check if we were successfully connected to
     # a client
     try:
-      session_sendmessage(new_sockobj, CONNECT_SERVER_TAG + ',' + server_id)
-      response = session_recvmessage(new_sockobj)
+      session.session_sendmessage(new_sockobj, CONNECT_SERVER_TAG + ',' + server_id)
+      response = session.session_recvmessage(new_sockobj)
     except (sockettimeout.SocketTimeoutError, SocketClosedRemote, 
         session.SessionEOF), e:
       raise TCPServerSocketInvalidError(
@@ -402,6 +402,10 @@ class TCPRelayAffix(BaseAffix):
     # relayed listening on multiple ports.
     server_id = localip + ':' + str(localport)
 
+    # The localip must be resolved so we can use it in our 
+    # actual network calls.
+    actual_ip = namingandresolveraffix.resolve_identifier(localip)
+
     # If a default forwarder is provided then we only try to use it.
     # Otherwise we do a lookup for all the forwarders that are available.
     if self.default_forwarder:
@@ -434,7 +438,7 @@ class TCPRelayAffix(BaseAffix):
         # Use timeouts so that we don't hang indefinitely if the 
         # control connection (or the relay) hangs.
         sockobj = sockettimeout.timeout_openconnection(forwarder_ip, 
-            forwarder_port, localip, localport, _NAT_AFFIX_DEFAULT_TIMEOUT)
+            forwarder_port, actual_ip, localport, _NAT_AFFIX_DEFAULT_TIMEOUT)
       # MMM: Should we also catch RepyArgumentError and AddressbindingError here? Currently we raise those.
       except (AlreadyListeningError, CleanupInProgressError, 
           ConnectionRefusedError, DuplicateTupleError, 
@@ -445,7 +449,7 @@ class TCPRelayAffix(BaseAffix):
       except Exception, err:
         if _NAT_AFFIX_DEBUG_MODE:
           log(self, "TCPRelayAffix found unexpected error: %s\n. Local Address is: '%s:%d'. Desired forwarder and server_ip: %s:%d, %s" % 
-            (repr(err), localip, localport, forwarder_ip, 
+            (repr(err), actual_ip, localport, forwarder_ip, 
             forwarder_port, server_id))
         raise
       else:
@@ -472,8 +476,8 @@ class TCPRelayAffix(BaseAffix):
 	  # return the socket object. It is possible that the forwarder will 
 	  # return other messages such as SERVER_FULL or CONNECTION_REFUSED msg.
 	  # In which case we move on to the next forwarder.
-	  session_sendmessage(sockobj, register_serv_msg)
-	  confirmation_msg = session_recvmessage(sockobj)
+	  session.session_sendmessage(sockobj, register_serv_msg)
+	  confirmation_msg = session.session_recvmessage(sockobj)
 
           if confirmation_msg == CONNECT_SUCCESS:
             if not self.default_forwarder:
@@ -492,8 +496,8 @@ class TCPRelayAffix(BaseAffix):
     # We have exhausted all the forwarders in the forwarder list.
     else:
       raise AddressBindingError("Unable to connect to any NAT Forwarder (" + 
-        str(forwarder_list) + ") using localip:localport " + 
-        str(localip) + ":" + str(localport))
+        str(forwarder_list) + ") using localip/actual_ip:localport " + 
+         str(localip) + "/" + str(actual_ip) + ":" + str(localport))
     
 
 
@@ -535,19 +539,3 @@ class TCPRelayAffix(BaseAffix):
 
     return nat_ad_string + self.peek().get_advertisement_string()
 
-
-
-
-
-class NatAffixError (AffixInternalError):
-  """
-  This error should be raised if there are no Nat Forwarders
-  available or cannot connect to the Forwarders.
-  """
-  pass
-
-  
-  
-  
-  
-  
