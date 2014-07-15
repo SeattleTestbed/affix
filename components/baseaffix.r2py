@@ -52,8 +52,12 @@ class BaseAffix:
     Affix component below us. Typical implementation:
 
     reference_to_copy_of_next_affix = self.affix_context['next_affix'].copy()
-    reproduced_self = self.__init__(reference_to_copy_of_next_affix, 
-      self.affix_context['optional_args']
+    # To reproduce myself, create a new object that is configured 
+    # like I was at instantiation
+    reproduced_self = MyAffix(reference_to_copy_of_next_affix, 
+      self.affix_context['optional_args'])
+    # If you store additional state information besides affix_context, 
+    # remember to give it to my reproduced self too!
     return reproduced_self
     """
     raise AffixError(repr(self) + " does not implement a copy() method!")
