@@ -263,7 +263,7 @@ class TCPRelayAffix(baseaffix.BaseAffix):
       session.session_sendmessage(nat_serversocket, CHECK_SERVER_CONN)
       nat_response = session.session_recvmessage(nat_serversocket)
 
-    except SocketClosedRemote, e:
+    except (SocketClosedRemote, sockettimeout.SocketTimeoutError), e:
       # Trying to reconnect doesn't make sense (DuplicateTupleError, or 
       # maybe that forwarder doesn't exist anymore). Pretend the socket 
       # was closed locally even when it wasn't.
@@ -272,8 +272,7 @@ class TCPRelayAffix(baseaffix.BaseAffix):
       if _NAT_AFFIX_DEBUG_MODE:
         log("[TCPRelayAffix] Forwarder closed connection, raising SocketClosedLocal")
 
-      raise SocketClosedLocal("TCPRelayAffix: This socket is no longer available for listening as we lost the connection to our listening proxy with error '" + 
-        repr(e) + "'. Sorry for raising what seems to be the wrong exception.")
+      raise TCPServerSocketInvalidError("TCPRelayAffix: This socket is no longer available for listening as we lost the connection to our listening proxy with error '" + repr(e) + "'.")
 
 
     # If there is an available client, we try to establish a connection.

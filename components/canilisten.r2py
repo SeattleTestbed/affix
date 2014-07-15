@@ -382,8 +382,8 @@ def check_specific_port(desired_port):
             repr(e)))
         continue
   else:
-    raise CanIListenError("Tried all servers unsuccessfully. Exceptions seen: " + 
-        str(exceptions_list))
+    raise CanIListenError("Tried servers " + str(server_address_list) + 
+        " unsuccessfully. Exceptions seen: " + str(exceptions_list))
 
 
 

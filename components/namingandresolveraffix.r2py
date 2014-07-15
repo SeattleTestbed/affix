@@ -27,6 +27,8 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
     optional_args - First element (optional): a string representing 
         the desired identifier for this Affix stack.
         Further elements (optional): Currently ignored.
+        NOTE: If further elements are to be used in the future, 
+            also review the .copy() method below!
 
     <Side Effects>
       None
@@ -37,8 +39,7 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
     <Return>
       None
     """
-
-    assert isinstance(optional_args, list), "optional_args must be a list. Did you mean to call me with optional_args=[" + str(optional_args) + "] instead?"
+    assert isinstance(optional_args, list) or optional_args is None, "optional_args must be a list. Did you mean to call me with optional_args=[" + str(optional_args) + "] instead?"
 
     self.affix_context = {'optional_args' : optional_args, 
         'next_affix' : next_affix}
@@ -64,9 +65,6 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
 
         # Announced mappings last for ADVERTISE_TTL seconds
         ADVERTISE_TTL = advertisepipe.TTL
-
-        # Re-announce after at most REDO_INTERVAL seconds
-        REDO_INTERVAL = ADVERTISE_TTL/2
 
         previous_ip = None
         current_ip = None
@@ -105,7 +103,7 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
                 previous_ip = current_ip
 
           except Exception, e:
-            log(repr(e), "\n")
+            log(repr(self), "encountered", repr(e), "\n")
           finally:
             # No matter what happens, don't spin in a loop!
             sleep(CHECK_INTERVAL)
@@ -121,9 +119,11 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
 
 
   def copy(self):
+    # When copying myself, I must not hand the stack ID to the copy: 
+    # I'm already advertising it, and we don't want to spawn tons of 
+    # additional threads.
     reference_to_copy_of_next_affix = self.affix_context['next_affix'].copy()
-    reproduced_self = self.__init__(reference_to_copy_of_next_affix, 
-      self.affix_context['optional_args'])
+    reproduced_self = NamingAndResolverAffix(reference_to_copy_of_next_affix, None)
     return reproduced_self
 
 
