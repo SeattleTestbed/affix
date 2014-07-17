@@ -129,10 +129,18 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
 
   def get_advertisement_string(self):
     """
-    We don't advertise as the remote side will not care whether or 
-    not we help the local stack resolving identifiers.
+    We advertise to notify the remote side explicitly that we might 
+    be using an identifier rather than an IP address to advertise. 
+    This prevents attempting to be smart on the client side.
+
+    NOTE: I cannot just do this conditional on whether a stack ID was 
+        set --- not having a stack ID myself does not mean none was 
+        set in any of my siblings. If I am a copy of another instance 
+        that does the advertising, that one will be the only 
+        NamingAndResolverAffix in this flock that has the stack ID 
+        set. I won't have it.
     """
-    return self.peek().get_advertisement_string()
+    return "(NamingAndResolverAffix)" + self.peek().get_advertisement_string()
 
 
 
@@ -153,6 +161,7 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
     # We make a copy of ourselves before we do anything as we may have multiple
     # openconnection calls that return multiple real sockets.
     #this_affix_copy = self.copy()
+    log("naming.... called with", destip, destport, localip, localport, timeout)
     next_sockobj = self.peek().openconnection(
         resolve_identifier(destip), destport, 
         resolve_identifier(localip), localport, timeout)
