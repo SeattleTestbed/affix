@@ -107,6 +107,7 @@ class MakeMeHearAffix(baseaffix.BaseAffix):
     <Return>
       A listening socket.
     """
+    log("Running canilisten test for local address", localip, "port", localport, "\n")
     try:
       (can_hear_on_localport, _, _)  = canilisten.check_specific_port(localport)
     except (AlreadyListeningError, DuplicateTupleError, RepyArgumentError, 
@@ -147,7 +148,7 @@ class MakeMeHearAffix(baseaffix.BaseAffix):
 
     designated_affix_name, designated_affix_args, junk = affix_stack.parse_affix_string(designated_affix_string)
 
-    log("Can hear:", can_hear_on_localport, "Designated affix:", designated_affix_name, "\n")
+    log("Can hear:", can_hear_on_localport, "Designated Affix:", designated_affix_name, "\n")
     try:
       affix_stack.find_and_register_affix(designated_affix_name)
       designated_affix_object = affix_stack.create_affix_object(
@@ -158,8 +159,8 @@ class MakeMeHearAffix(baseaffix.BaseAffix):
 	  designated_affix_string + "': " + repr(e))
     # We found, registered, and instantiated the Affix.
     # Add it to the stack.
+    log("Designated Affix is", designated_affix_object, "\n")
     try:
-      log("Designated affix is", designated_affix_object, "\n")
       self.push(designated_affix_object)
     except AffixStackError, e:
       # Pushing didn't work.
@@ -193,18 +194,18 @@ class MakeMeHearAffix(baseaffix.BaseAffix):
 
 
   def tcpserversocket_getconnection(self, tcpserversocket):
-    # We use the base class's method but need to see 
-    # if the Affix component below us thinks the TCP server socket 
-    # became invalid. We then must pop the designated_affix we 
-    # pushed when we set the stack up.
+    # We use the base class's method to do the actual copying.
+    # If however the Affix component below us thinks the TCP server 
+    # socket became invalid, we must remove the designated_affix we 
+    # pushed when we set the stack up (and all additional components 
+    # it might have added). We do this by restoring our old next_affix 
+    # reference from before our push().
     try:
-      baseaffix.BaseAffix.tcpserversocket_getconnection(self, tcpserversocket)
+      return baseaffix.BaseAffix.tcpserversocket_getconnection(self, tcpserversocket)
     except TCPServerSocketInvalidError:
       # Restore the stack to how it looked like before we changed it.
       # We can't just self.pop() because the Affix component we instantiated 
       # below us might have changed the stack too.
-      log("****** Caught 'er\n")
-      log("Setting", self.affix_context["next_affix"], "to", self.original_next_affix, "\n")
       self.next_affix = self.original_next_affix
       self.affix_context['next_affix'] = self.original_next_affix
       raise
