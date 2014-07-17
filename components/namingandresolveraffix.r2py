@@ -196,7 +196,6 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
 
 
   def tcpserversocket_getconnection(self, tcpserversocket):
-    log("NAR getconn")
     # We make a copy of ourselves before doing a getconnection
     # as this function may be invoked multiple times and each
     # individual socket may each modify the affix stack 
