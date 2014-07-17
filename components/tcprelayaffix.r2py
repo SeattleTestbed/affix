@@ -34,7 +34,7 @@ _NAT_AFFIX_DEFAULT_TIMEOUT = 10
 _NAT_SOCKET_TIMEOUT = 10
 
 # Whether we want to print debug statements.
-_NAT_AFFIX_DEBUG_MODE = False # True
+_NAT_AFFIX_DEBUG_MODE = False
 
 
 
@@ -249,9 +249,6 @@ class TCPRelayAffix(baseaffix.BaseAffix):
       (remoteip, remoteport, socketobj) - for the connection.
     """
     
-    if _NAT_AFFIX_DEBUG_MODE:
-      log("[TCPRelayAffix] Received a getconnection call...\n")    
-
     if nat_serversocket._closed:
       raise SocketClosedLocal("The NAT TCPServerSocket has been closed.")
 
@@ -270,22 +267,23 @@ class TCPRelayAffix(baseaffix.BaseAffix):
       nat_serversocket.close()
 
       if _NAT_AFFIX_DEBUG_MODE:
-        log("[TCPRelayAffix] Forwarder closed connection, raising SocketClosedLocal")
+        log("[TCPRelayAffix] Forwarder closed connection with ", repr(e), "\n")
 
       raise TCPServerSocketInvalidError("TCPRelayAffix: This socket is no longer available for listening as we lost the connection to our listening proxy with error '" + repr(e) + "'.")
 
 
     # If there is an available client, we try to establish a connection.
     if nat_response == CLIENT_AVAILABLE:
+      theclient = self.connect_available_client(server_id)
       if _NAT_AFFIX_DEBUG_MODE:
-        log("[TCPRelayAffix] Found available client waiting to connect.")
-      return self.connect_available_client(server_id)
+        log("[TCPRelayAffix] Found available client", repr(theclient), "waiting to connect.")
+      return theclient
     else:
       raise SocketWouldBlockError("Unable to connect to any client currently.")
-      
-      
-      
-    
+
+
+
+
   def tcpserver_close(self, serversocket):
     # Note that we simply just close the control socket that is connected
     # to the Nat Forwarder. When the connection is closed, the NAT forwarder
@@ -328,7 +326,7 @@ class TCPRelayAffix(baseaffix.BaseAffix):
 
     for localport in possible_ports:
       try:
-        log(getruntime(), self, "Trying to connect_available_client using", forwarder_ip, 
+        log(self, "Trying to connect_available_client using", forwarder_ip, 
           forwarder_port, getmyip(), localport, "\n")
         # Use a timeout socket during connection setup so that we don't
         # hand forever if problems occur.
