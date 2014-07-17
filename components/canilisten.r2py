@@ -134,14 +134,13 @@ def logtn(*args):
     argstrings.append(str(arg))
 
   # Take care of cases when the time wasn't updated with NTP...
-  mytime = time.time_gettime
+  mytime = time.time_getunixtime
   try:
     mytime()
   except time.TimeError:
     mytime = getruntime
 
-  logstring = str(mytime() - time.time_seconds_from_1900_to_1970) + \
-      " " + " ".join(argstrings) + "\n"
+  logstring = str(mytime()) + " " + " ".join(argstrings) + "\n"
   log(logstring)
 
 
