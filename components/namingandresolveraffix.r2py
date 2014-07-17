@@ -109,13 +109,15 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
             sleep(CHECK_INTERVAL)
 
       # (Back to NamingAndResolverAffix's constructor...)
-      createthread(monitor_ip_and_announce_id)
+      try:
+        createthread(monitor_ip_and_announce_id)
+      except ResourceExhaustedError:
+        # We couldn't create the thread. This means we didn't set up 
+        # correctly. Signal this to our caller!
+        raise AffixStackError("NamingAndResolverAffix instantiation failed due to lack of available threads!")
 
 
   
-  # ===========================================================================
-  # Public methods that the child classes must override.
-  # ===========================================================================
 
 
   def copy(self):
@@ -160,22 +162,21 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
   def openconnection(self, destip, destport, localip, localport, timeout):
     # We make a copy of ourselves before we do anything as we may have multiple
     # openconnection calls that return multiple real sockets.
-    #this_affix_copy = self.copy()
-    log("naming.... called with", destip, destport, localip, localport, timeout)
-    next_sockobj = self.peek().openconnection(
+    copy_of_self = self.copy()
+    next_sockobj = copy_of_self.peek().openconnection(
         resolve_identifier(destip), destport, 
         resolve_identifier(localip), localport, timeout)
     
-    return AffixSocket(next_sockobj, self)
+    return AffixSocket(next_sockobj, copy_of_self)
 
 
 
   def listenforconnection(self, localip, localport):
-    # TODO: Not sure if we have to make a copy of self before retrieving
-    # the next layer.
-    next_layer_socket = self.peek().listenforconnection(
+    # Copy myself before returning a socket. See openconnection() above.
+    copy_of_self = self.copy()
+    next_layer_socket = copy_of_self.peek().listenforconnection(
         resolve_identifier(localip), localport)
-    return AffixTCPServerSocket(next_layer_socket, self)
+    return AffixTCPServerSocket(next_layer_socket, copy_of_self)
 
 
 
@@ -195,6 +196,7 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
 
 
   def tcpserversocket_getconnection(self, tcpserversocket):
+    log("NAR getconn")
     # We make a copy of ourselves before doing a getconnection
     # as this function may be invoked multiple times and each
     # individual socket may each modify the affix stack 
