@@ -91,7 +91,7 @@ class CoordinationAffix(baseaffix.BaseAffix):
     tcpserversocket = self.peek().listenforconnection(localhost, localport)
 
     if _COORDINATION_AFFIX_DEBUG_MODE:
-      log(self, "CoordinationAffix started listening socket on '%s:%d'\n" % (localip, localport))
+      log(self, "CoordinationAffix started listening socket on '%s:%d'\n" % (localhost, localport))
 
     # The underlying affix stack has been built completely. We can advertise the
     # affix stack.
