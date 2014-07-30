@@ -63,9 +63,6 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
         # Check every CHECK_INTERVAL seconds for address changes
         CHECK_INTERVAL = 1
 
-        # Announced mappings last for ADVERTISE_TTL seconds
-        ADVERTISE_TTL = advertisepipe.TTL
-
         previous_ip = None
         current_ip = None
         advertisepipe_handle = None
@@ -81,18 +78,11 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
               continue
             else:
               # We got our current_ip. If it change since we last checked, 
-              # we announce it anew and let advertisepipe take it. 
-              # Note: I take AdvertiseError's to mean that we should 
+              # we put it into the advertisepipe (which will announce it).
+              # Note: I take any exceptions to mean that we should 
               # not yet replace previous_ip with current_ip because we 
               # weren't yet able to announce the new mapping.
               if current_ip != previous_ip:
-                # Advertise the new mapping
-                # XXX This is necessary because advertisepipe doesn't 
-                # XXX announce new items when they are added to its pipe, 
-                # XXX but only caches them at first.
-                advertise.advertise_announce(self.affix_context["stack ID"], 
-                    current_ip, ADVERTISE_TTL)
-
                 # Remove the old mapping from advertisepipe, and 
                 # add the new one. 
                 advertisepipe.remove_from_pipe(advertisepipe_handle)
@@ -235,8 +225,14 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
   def gethostbyname(self, name):
     """
     Since one of this Affix component's tasks is to resolve, we'll do just that!
+
+    Note that resolve_identifier raises RepyArgumentError but our 
+    caller expects NetworkAddressError, so we wrap accordingly.
     """
-    return resolve_identifier(name)
+    try:
+      return resolve_identifier(name)
+    except RepyArgumentError, e:
+      raise NetworkAddressError(str(e))
 
 
   def __str__(self):
@@ -266,7 +262,7 @@ def resolve_identifier(identifier):
     IP addresses.
 
   <Exception>
-    NetworkAddressError if unable to do a lookup (like gethostbyname())
+    RepyArgumentError if unable to resolve using advertise_lookup or DNS.
   """
 
   # XXX Caution, hack ahead!
@@ -304,5 +300,9 @@ def resolve_identifier(identifier):
 
   else:
     # No success from advertise services, try DNS.
-    return gethostbyname(identifier)
+    try:
+      return gethostbyname(identifier)
+    except NetworkAddressError:
+      raise RepyArgumentError("NamingAndResolverAffix could not resolve '" + 
+          str(identifier) + "' using the Seattle advertise services or DNS.")
 
