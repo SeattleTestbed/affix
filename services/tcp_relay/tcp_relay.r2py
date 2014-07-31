@@ -389,9 +389,15 @@ def handle_client_request(remote_ip, remote_port, server_id, sockobj):
     client_id = "%s:%d" % (remote_ip, remote_port)
     logmsg("Incoming TCP connection request from '%s' for server '%s'" % 
            (client_id, server_id), INFO_MSG)
-    
+
+    # Are they connecting to an unregistered server?    
     if server_id not in registered_server.keys():
-      session_sendmessage(sockobj, CONNECT_FAIL)
+      try:
+        session_sendmessage(sockobj, CONNECT_FAIL)
+      except SockedClosedRemote:
+        # We don't really care if we couldn't send back the error message...
+        pass
+
       logmsg("Client '%s' attempting to connect to unregistered server '%s'" %
             (client_id, server_id), ERR_MSG)
       return
@@ -616,7 +622,7 @@ if callfunc == 'initialize':
     # Override tcp_relay_common_lib's key
     NAT_FORWARDER_KEY = callargs[1]
   
-  myip, myport = getmyip(), str(mycontext['listenport_tcp'])
+  myip, myport = getmyip(), mycontext['listenport_tcp']
 
   (i_can_listen, ignore, ignore) = canilisten.check_specific_port(myport)
 
@@ -632,7 +638,7 @@ I'll let you proceed regardless. You hopefully know what you do.""", ERR_MSG)
   createthread(tcp_forwarder_listener)
   # XXX Create a status thread to show the contents of the registered_server dict every ten minutes or so.
   # Launch advertiser and advertise this forwarders ip address, tcp port.
-  advertise_value = myip + ':' + myport 
+  advertise_value = myip + ':' + str(myport)
   logmsg("Starting advertise thread for " + NAT_FORWARDER_KEY + 
     ": " + advertise_value, INFO_MSG)
   advertisepipe.add_to_pipe(NAT_FORWARDER_KEY, advertise_value)
