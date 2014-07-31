@@ -113,7 +113,7 @@ def tcp_forwarder_listener():
     else:
       logmsg("Got connection from " + str(remote_ip) + ":" + str(remote_port), INFO_MSG)
       try:
-        conn_init_message = session_recvmessage(sockobj)
+        conn_init_message = session.session_recvmessage(sockobj)
         logmsg(str(remote_ip) + ":" + str(remote_port) + " said " + 
           conn_init_message, DEBUG_MSG)
         (conn_type, conn_id) = conn_init_message.split(',')
@@ -211,7 +211,7 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
         createthread(launch_server_communication_thread(sockobj, server_id))
         
         try:
-          session_sendmessage(sockobj, CONNECT_SUCCESS)
+          session.session_sendmessage(sockobj, CONNECT_SUCCESS)
         except SocketClosedRemote, err:
           logmsg("Socket closed while registering server. " + repr(err), DEBUG_MSG)
           unregister_server(server_id)
@@ -220,7 +220,7 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
           (server_id, remote_ip, str(remote_port), 
           MAX_SERVERS - len(registered_server)), INFO_MSG)
       else:
-        session_sendmessage(sockobj, CONNECT_FAIL)
+        session.session_sendmessage(sockobj, CONNECT_FAIL)
         logmsg("Unable to register server '%s' on %s:%s. Max servers reached." %
           (server_id, remote_ip, str(remote_port)), INFO_MSG)
     except Exception, e:
@@ -289,7 +289,7 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
             
     # Check to make sure that the server has registered already.
     if server_id not in registered_server.keys():
-      session_sendmessage(sockobj, CONNECT_FAIL)
+      session.session_sendmessage(sockobj, CONNECT_FAIL)
       logmsg("Server '%s' attempting to connect to client before registering" %
               server_id, ERR_MSG)
       return
@@ -323,7 +323,7 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
         # up when the forward_tcp_message thread tries to forward any
         # messages.
         try:
-          session_sendmessage(sockobj, CONNECT_SUCCESS + ',' + client_id)
+          session.session_sendmessage(sockobj, CONNECT_SUCCESS + ',' + client_id)
         except (SocketClosedRemote, SocketClosedLocal), err:
           # If the server connection has been closed, we unregister
           # the server.
@@ -336,7 +336,7 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
         try:
           # Caveat, see above. Ending up here doesn't mean the 
           # connection to the server is still good.
-          session_sendmessage(cur_client_sockobj, CONNECT_SUCCESS)
+          session.session_sendmessage(cur_client_sockobj, CONNECT_SUCCESS)
         except (SocketClosedRemote, SocketClosedLocal), err:
           logmsg("Couldn't connect server '" + str(server_id) + 
             "' to client '" + str(client_id) + 
@@ -345,13 +345,13 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
           logmsg("Made connection to '%s' from '%s'" % (server_id, client_id), 
               INFO_MSG)
       else:
-        session_sendmessage(sockobj, CONNECT_FAIL)
+        session.session_sendmessage(sockobj, CONNECT_FAIL)
         logmsg("Unable to register additional client '" + str(client_id) + 
           "' to server '" + str(server_id) + 
           "'. Max number of clients (" + str(MAX_CLIENTS_PER_SERVER)+ 
           ") reached on server.", INFO_MSG)
     except Exception, err:
-      session_sendmessage(sockobj, CONNECT_FAIL)
+      session.session_sendmessage(sockobj, CONNECT_FAIL)
       logmsg("Unable to connect client '" + str(client_id) + 
         "' to server '" + str(server_id) + "' due to err. " + 
         str(type(err)) + " " + str(err), ERR_MSG)
@@ -393,7 +393,7 @@ def handle_client_request(remote_ip, remote_port, server_id, sockobj):
     # Are they connecting to an unregistered server?    
     if server_id not in registered_server.keys():
       try:
-        session_sendmessage(sockobj, CONNECT_FAIL)
+        session.session_sendmessage(sockobj, CONNECT_FAIL)
       except SockedClosedRemote:
         # We don't really care if we couldn't send back the error message...
         pass
@@ -545,14 +545,14 @@ def launch_server_communication_thread(sockobj, server_id):
     # or any unexpected errors that arise.
     while True:
       try:
-        request_type = session_recvmessage(sockobj)
+        request_type = session.session_recvmessage(sockobj)
         # Check if the server is requesting to see if there is any
         # clients waiting to be connected.
         if request_type == CHECK_SERVER_CONN:
           if len(registered_server[server_id]['waiting_clients']) > 0:
-            session_sendmessage(sockobj, CLIENT_AVAILABLE)
+            session.session_sendmessage(sockobj, CLIENT_AVAILABLE)
           else:
-            session_sendmessage(sockobj, CLIENT_UNAVAILABLE)
+            session.session_sendmessage(sockobj, CLIENT_UNAVAILABLE)
       except (SocketClosedRemote, SocketClosedLocal, SessionEOF), err:
         break
       except Exception, err:
