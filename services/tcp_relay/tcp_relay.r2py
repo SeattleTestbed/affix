@@ -220,7 +220,11 @@ def register_new_server(remote_ip, remote_port, server_id, sockobj):
           (server_id, remote_ip, str(remote_port), 
           MAX_SERVERS - len(registered_server)), INFO_MSG)
       else:
-        session.session_sendmessage(sockobj, CONNECT_FAIL)
+        try:
+          session.session_sendmessage(sockobj, CONNECT_FAIL)
+        except SocketClosedRemote:
+          # Too bad, now they won't receive the error message. Ignore!
+          pass
         logmsg("Unable to register server '%s' on %s:%s. Max servers reached." %
           (server_id, remote_ip, str(remote_port)), INFO_MSG)
     except Exception, e:
@@ -289,7 +293,11 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
             
     # Check to make sure that the server has registered already.
     if server_id not in registered_server.keys():
-      session.session_sendmessage(sockobj, CONNECT_FAIL)
+      try:
+        session.session_sendmessage(sockobj, CONNECT_FAIL)
+      except SocketClosedRemote:
+        # It's not our problem if they don't receive the error message...
+        pass
       logmsg("Server '%s' attempting to connect to client before registering" %
               server_id, ERR_MSG)
       return
@@ -345,13 +353,21 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
           logmsg("Made connection to '%s' from '%s'" % (server_id, client_id), 
               INFO_MSG)
       else:
-        session.session_sendmessage(sockobj, CONNECT_FAIL)
+        try:
+          session.session_sendmessage(sockobj, CONNECT_FAIL)
+        except SocketClosedRemote:
+          # They won't see the error message then. We don't care!
+          pass
         logmsg("Unable to register additional client '" + str(client_id) + 
           "' to server '" + str(server_id) + 
           "'. Max number of clients (" + str(MAX_CLIENTS_PER_SERVER)+ 
           ") reached on server.", INFO_MSG)
     except Exception, err:
-      session.session_sendmessage(sockobj, CONNECT_FAIL)
+      try:
+        session.session_sendmessage(sockobj, CONNECT_FAIL)
+      except SocketClosedRemote:
+        # Same here, they won't see the error message.
+        pass
       logmsg("Unable to connect client '" + str(client_id) + 
         "' to server '" + str(server_id) + "' due to err. " + 
         str(type(err)) + " " + str(err), ERR_MSG)
