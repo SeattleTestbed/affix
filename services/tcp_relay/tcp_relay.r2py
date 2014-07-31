@@ -569,7 +569,7 @@ def launch_server_communication_thread(sockobj, server_id):
             session.session_sendmessage(sockobj, CLIENT_AVAILABLE)
           else:
             session.session_sendmessage(sockobj, CLIENT_UNAVAILABLE)
-      except (SocketClosedRemote, SocketClosedLocal, SessionEOF), err:
+      except (SocketClosedRemote, SocketClosedLocal, session.SessionEOF), err:
         break
       except Exception, err:
         logmsg("Unexpected error in launch_server_communication_thread: " + 
