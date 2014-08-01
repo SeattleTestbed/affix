@@ -1,0 +1,145 @@
+affix_stack = dy_import_module("affix_stack.r2py")
+random = dy_import_module("random.r2py")
+
+def usage():
+  log("""
+test-affix-issue-56.r2py -- 
+  check a buffering/discard-on-close issue with TCP relays.
+
+Usage:
+  python repy.py restrictionsfile dylink.r2py test-affix-issue-56.r2py \\
+      SERVER_FIRST_RECV_DELAY CLIENT_SEND_AMOUNT CLIENT_HANG_ON_INTERVAL
+
+where
+  SERVER_FIRST_RECV_DELAY delays the server before its first recv() call 
+      after it has picked up the incoming connection
+  CLIENT_SEND_AMOUNT is the number of bytes the client will send
+  CLIENT_HANG_ON_INTERVAL is the time span the client will wait before 
+      closing down its connection to the relay
+""")
+
+
+server_thread_running_lock = createlock()
+
+def handle_connection(server_socket):
+  def connection_handler():
+    server_thread_running_lock.acquire(False)
+    log_string = "Server: Thread started at "+ str(getruntime()) + ".\n"
+    log(log_string)
+    
+    try:
+      while True:
+        try:
+          (rip, rport, connected_socket) = server_socket.getconnection()
+          log_string = "Server: Incoming connection from " + str(rip) +  \
+              " on port " + str(rport) + " at " + str(getruntime()) +  "\n"
+          log(log_string)
+          break
+        except SocketWouldBlockError:
+          sleep(0.01)
+
+      log_string = "Server: Sleeping for " + str(server_first_recv_delay) + \
+          " seconds before starting to receive\n"
+      log(log_string)
+      sleep(server_first_recv_delay)
+
+      data = ""
+      while True:
+        try:
+          data += connected_socket.recv(1000)
+          log_string = "Server: Received "+ str(len(data)) + \
+              " bytes so far, timestamp " + str(getruntime()) + "\n"
+          log(log_string)
+        except SocketWouldBlockError:
+          sleep(float(callargs[0]))
+    except (SocketClosedLocal, SocketClosedRemote), e:
+      server_thread_running_lock.release()
+      log("Server: Shutting down socket due to", repr(e), "at", getruntime(), "\n")
+      try:
+        server_socket.close()
+      except:
+        pass
+      try:
+        connected_socket.close()
+      except:
+        pass
+
+  return connection_handler
+
+try:
+  server_first_recv_delay = float(callargs[0])
+  #server_recv_interval = float(callargs[1])
+  client_send_amount = int(callargs[1])
+  client_hang_on_interval = float(callargs[2])
+except:
+  log("Sorry, wrong number or type of arguments. See help below:\n")
+  usage()
+  exitall()
+
+
+log("Setting up server Affix stack\n")
+server_id = "random-server-name-" + str(random.random_randint(0, 2**20))
+server_stack = affix_stack.AffixStack("(CoordinationAffix)(TCPRelayAffix)(NamingAndResolverAffix," + server_id + ")")
+
+sleep(2)
+
+allowed_ports = list(getresources()[0]["connport"])
+random.random_shuffle(allowed_ports)
+server_port = allowed_ports.pop()
+
+log("Listening on server socket with ID", server_id, "\n")
+server_socket = server_stack.listenforconnection(server_id, server_port)
+
+createthread(handle_connection(server_socket))
+
+
+log("Setting up client Affix stack\n")
+client_stack = affix_stack.AffixStack("(CoordinationAffix)")
+
+log("Client: Opening connection to server at", getruntime(), "\n")
+client_port = allowed_ports.pop()
+client_socket = client_stack.openconnection(server_id, server_port, 
+    getmyip(), client_port, 10)
+
+
+log_string = "Client: Connected to server, start sending data at " + \
+    str(getruntime()) + "\n"
+bytes_sent = 0
+client_send_string = client_send_amount * "."
+while True:
+  try:
+    bytes_sent += client_socket.send(client_send_string[bytes_sent:])
+    log_string = "Client: Sent " + str(bytes_sent) + \
+        " bytes so far, time is " + str(getruntime()) + "\n"
+    log(log_string)
+  except SocketWouldBlockError:
+    pass
+  finally:
+    if bytes_sent == client_send_amount:
+      break
+    sleep(0.01)
+
+log_string = "Client: Done sending at " + str(getruntime()) + \
+    ", hanging on for " + str(client_hang_on_interval) + " more seconds.\n"
+log(log_string)
+sleep(client_hang_on_interval)
+try:
+  log_string = "Client: Closing down connection at " + str(getruntime()) + ".\n"
+  log(log_string)
+  client_socket.close()
+except:
+  pass
+
+sleep_time = 30
+log("The program will run for at most", sleep_time, 
+    "more seconds before we exitall!\n")
+
+start_time = getruntime()
+
+while (getruntime() - start_time < sleep_time) and \
+    not server_thread_running_lock.acquire(False):
+  sleep(1)
+
+# If the server thread didn't give up yet, let's kill him.
+exitall()
+
