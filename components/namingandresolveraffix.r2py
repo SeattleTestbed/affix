@@ -14,7 +14,7 @@ in an Affix stack.
 """
 
 baseaffix = dy_import_module("baseaffix.r2py")
-
+affix_wrapper_lib = dy_import_module("affix_wrapper_lib.r2py")
 
 
 class NamingAndResolverAffix(baseaffix.BaseAffix):
@@ -145,7 +145,7 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
   def listenformessage(self, localip, localport):
     next_layer_socket = self.peek().listenformessage(
         resolve_identifier(localip), localport)
-    return AffixUDPServerSocket(next_layer_socket, self)
+    return affix_wrapper_lib.AffixUDPServerSocket(next_layer_socket, self)
 
 
 
@@ -157,7 +157,7 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
         resolve_identifier(destip), destport, 
         resolve_identifier(localip), localport, timeout)
     
-    return AffixSocket(next_sockobj, copy_of_self)
+    return affix_wrapper_lib.AffixSocket(next_sockobj, copy_of_self)
 
 
 
@@ -166,7 +166,7 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
     copy_of_self = self.copy()
     next_layer_socket = copy_of_self.peek().listenforconnection(
         resolve_identifier(localip), localport)
-    return AffixTCPServerSocket(next_layer_socket, copy_of_self)
+    return affix_wrapper_lib.AffixTCPServerSocket(next_layer_socket, copy_of_self)
 
 
 
@@ -193,7 +193,7 @@ class NamingAndResolverAffix(baseaffix.BaseAffix):
     this_affix_copy = self.copy()
     (remote_ip, remote_port, repy_socket) = this_affix_copy.peek().tcpserversocket_getconnection(tcpserversocket)
 
-    return (remote_ip, remote_port, AffixSocket(repy_socket, self))
+    return (remote_ip, remote_port, affix_wrapper_lib.AffixSocket(repy_socket, self))
 
 
 
