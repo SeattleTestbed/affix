@@ -12,7 +12,7 @@ This design was chosen so that Affix components need not worry
 components are below them.
 """
 
-affix_exceptions = dy_import_module("affix_exceptions.r2py)"
+affix_exceptions = dy_import_module("affix_exceptions.r2py")
 base_affix = dy_import_module("baseaffix.r2py")
 
 class RepyNetworkAPIWrapper(base_affix.BaseAffix):
