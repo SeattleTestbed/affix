@@ -146,28 +146,32 @@ class MakeMeHearAffix(baseaffix.BaseAffix):
     else:
       designated_affix_string = self.cannot_hear_affix_string
 
-    designated_affix_name, designated_affix_args, junk = affix_stack.parse_affix_string(designated_affix_string)
+    # Only manipulate the stack if there is an Affix we should add!
+    if designated_affix_string != "":
+      designated_affix_name, designated_affix_args, junk = affix_stack.parse_affix_string(designated_affix_string)
 
-    log("Can hear:", can_hear_on_localport, "Designated Affix:", designated_affix_name, "\n")
-    try:
-      affix_stack.find_and_register_affix(designated_affix_name)
-      designated_affix_object = affix_stack.create_affix_object(
-          designated_affix_name, designated_affix_args, self.next_affix)
-    except (affix_exceptions.AffixNotFoundError, affix_exceptions.AffixStackError), e:
-      raise AddressBindingError("MakeMeHearAffix problem with " + 
-          "finding, registering, or instantiating designated Affix '" + 
-	  designated_affix_string + "': " + repr(e))
-    # We found, registered, and instantiated the Affix.
-    # Add it to the stack.
-    log("Designated Affix is", designated_affix_object, "\n")
-    try:
-      self.push(designated_affix_object)
-    except AffixStackError, e:
-      # Pushing didn't work.
-      raise AddressBindingError("MakeMeHearAffix problem pushing " + 
-	designated_affix_string + " on the stack: " + repr(e))
+      log("Can hear:", can_hear_on_localport, "Designated Affix:", designated_affix_name, "\n")
+      try:
+        affix_stack.find_and_register_affix(designated_affix_name)
+        designated_affix_object = affix_stack.create_affix_object(
+            designated_affix_name, designated_affix_args, self.next_affix)
+      except (affix_exceptions.AffixNotFoundError, affix_exceptions.AffixStackError), e:
+        raise AddressBindingError("MakeMeHearAffix problem with " + 
+            "finding, registering, or instantiating designated Affix '" + 
+            designated_affix_string + "': " + repr(e))
+      # We found, registered, and instantiated the Affix.
+      # Add it to the stack.
+      log("Designated Affix is", designated_affix_object, "\n")
+      try:
+        self.push(designated_affix_object)
+      except AffixStackError, e:
+        # Pushing didn't work.
+        raise AddressBindingError("MakeMeHearAffix problem pushing " + 
+          designated_affix_string + " on the stack: " + repr(e))
 
-    # It's on the stack! Start listening...
+    # The designated Affix is on the stack now, or there was no 
+    # Affix to push. Start listening either on the new Affix, or 
+    # whatever Affix was below us already.
     try:
       tcpserversocket = self.peek().listenforconnection(localip, localport)
     except (AlreadyListeningError, DuplicateTupleError, 
