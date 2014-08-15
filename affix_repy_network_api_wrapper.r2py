@@ -12,6 +12,7 @@ This design was chosen so that Affix components need not worry
 components are below them.
 """
 
+affix_exceptions = dy_import_module("affix_exceptions.r2py)"
 base_affix = dy_import_module("baseaffix.r2py")
 
 class RepyNetworkAPIWrapper(base_affix.BaseAffix):
@@ -63,15 +64,15 @@ class RepyNetworkAPIWrapper(base_affix.BaseAffix):
 
   # Raise errors when someone tries to modify the stack below us.
   def peek(self):
-    raise AffixStackError("Cannot peek() past the bottom of the stack!")
+    raise affix_exceptions.AffixStackError("Cannot peek() past the bottom of the stack!")
 
 
   def pop(self):
-    raise AffixStackError("Nothing left on the stack to pop() below me!")
+    raise affix_exceptions.AffixStackError("Nothing left on the stack to pop() below me!")
 
 
   def push(self, new_affix_object):
-    raise AffixStackError("Cannot push() " + str(new_affix_object) + 
+    raise affix_exceptions.AffixStackError("Cannot push() " + str(new_affix_object) + 
         "to below the bottom of the stack!")
 
   def copy(self):

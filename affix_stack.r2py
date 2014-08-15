@@ -253,7 +253,7 @@ def create_affix_object(affix_name, affix_args, next_affix_object):
   #assert(isinstance(affix_stack_object, AffixStack)), "Bad arg type. affix_stack_object must be a AffixStack."
 
   if affix_name not in AFFIX_CLASS_DICT.keys():
-    raise AffixNotFoundError("Affix '%s' has not been registered yet." % affix_name)
+    raise affix_exceptions.AffixNotFoundError("Affix '%s' has not been registered yet." % affix_name)
 
   # Create a new affix object from the name and arguments provided.
   affix_object_class = AFFIX_CLASS_DICT[affix_name]
@@ -329,7 +329,7 @@ def parse_affix_string(affix_str):
 
       # For the case of an extra close parentheses.
       if open_paren_count < 0:
-        raise AffixConfigError("Incorrect affix string format. " +
+        raise affix_exceptions.AffixConfigError("Incorrect affix string format. " +
             "Mismatched parentheses.")
 
     else:
@@ -344,13 +344,13 @@ def parse_affix_string(affix_str):
       else:
         err = "Incorrect affix string format."
         err += " Affix string provided: " + affix_str
-        raise AffixConfigError(err)
+        raise affix_exceptions.AffixConfigError(err)
 
 
   # The case where we have finished parsing the affix string and 
   # There was a mismatch of parentheses.
   if open_paren_count > 0:
-    raise AffixConfigError("Incorrect affix string format. " +
+    raise affix_exceptions.AffixConfigError("Incorrect affix string format. " +
         "Mismatched parentheses.")
 
 
