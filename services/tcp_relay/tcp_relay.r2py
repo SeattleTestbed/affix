@@ -642,7 +642,7 @@ if callfunc == 'initialize':
       continue
   else:
     log("Could not updatetime() on any of the allowed UDP ports. Continuing with time.time_getunixtime = getruntime.\n")
-    time.time_getunixtime = getruntime()
+    time.time_getunixtime = getruntime
 
 
   logmsg("Starting TCP relay.", INFO_MSG)
