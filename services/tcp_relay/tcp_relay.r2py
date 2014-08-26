@@ -306,7 +306,11 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
    
    
     # Acquire a client lock to ensure there is no contention.
-    registered_server[server_id]['client_lock'].acquire(True)  
+    # We keep a local reference to the lock in case the server_id is 
+    # deregistered while we still handle this connection request.
+    # XXX Check how the register_lock and the client_lock are used. I believe both were implemented to avoid this problem we are working around here by storing the reference.
+    client_lock = registered_server[server_id]['client_lock']
+    client_lock.acquire(True)
     try:
       if len(registered_server[server_id]['connected_clients']) < MAX_CLIENTS_PER_SERVER:
         # Retrieve the list of clients that are waiting.
@@ -370,7 +374,7 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
         "' to server '" + str(server_id) + "' due to err. " + 
         str(type(err)) + " " + str(err), ERR_MSG)
     finally:
-      registered_server[server_id]['client_lock'].release() # XXX I saw a KeyError here on a relay. The server_id was removed before we could release the client lock. Could removing access to the taken lock block other threads forever? Should unregister_server block for each client_lock before removing the server?
+      client_lock.release()
   
   return _handle_server_conn_request_helper
   
