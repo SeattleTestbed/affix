@@ -471,13 +471,15 @@ def forward_data(server_id, client_id, client_facing_socket, server_facing_socke
     while True:
       # XXX Should we back off if encountering multiple SocketWouldBlockError's in a row?
       if is_relayed_connection_alive:
-        try:
-          server_facing_send_buffer += client_facing_socket.recv(MAX_BUFFER_LEN - len(server_facing_send_buffer))
-        except SocketWouldBlockError:
-          pass
-        except (SocketClosedLocal, SocketClosedRemote):
-          is_relayed_connection_alive = False
-          client_facing_send_buffer = ""
+        free_server_buffer_space = MAX_BUFFER_LEN - len(server_facing_send_buffer)
+        if free_server_buffer_space > 0:
+          try:
+            server_facing_send_buffer += client_facing_socket.recv(free_server_buffer_space)
+          except SocketWouldBlockError:
+            pass
+          except (SocketClosedLocal, SocketClosedRemote):
+            is_relayed_connection_alive = False
+            client_facing_send_buffer = ""
 
       try:
         bytes_sent = server_facing_socket.send(server_facing_send_buffer)
@@ -490,13 +492,15 @@ def forward_data(server_id, client_id, client_facing_socket, server_facing_socke
 
 
       if is_relayed_connection_alive:
-        try:
-          client_facing_send_buffer += server_facing_socket.recv(MAX_BUFFER_LEN - len(client_facing_send_buffer))
-        except SocketWouldBlockError:
-          pass
-        except (SocketClosedLocal, SocketClosedRemote):
-          is_relayed_connection_alive = False
-          server_facing_send_buffer = ""
+        free_client_buffer_space = MAX_BUFFER_LEN - len(client_facing_send_buffer)
+        if free_client_buffer_space > 0:
+          try:
+            client_facing_send_buffer += server_facing_socket.recv(free_client_buffer_space)
+          except SocketWouldBlockError:
+            pass
+          except (SocketClosedLocal, SocketClosedRemote):
+            is_relayed_connection_alive = False
+            server_facing_send_buffer = ""
 
       try:
         bytes_sent = client_facing_socket.send(client_facing_send_buffer)
