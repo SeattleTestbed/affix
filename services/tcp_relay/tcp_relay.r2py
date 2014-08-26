@@ -350,7 +350,7 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
         except (SocketClosedRemote, SocketClosedLocal), err:
           logmsg("Couldn't connect server '" + str(server_id) + 
             "' to client '" + str(client_id) + 
-            "'. Client closed connection. " + str(err), ERR_MSG)
+            "'. Connection closed with '" + repr(err) + "'.", ERR_MSG)
         else:
           logmsg("Made connection to '%s' from '%s'" % (server_id, client_id), 
               INFO_MSG)
