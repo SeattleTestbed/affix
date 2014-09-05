@@ -412,7 +412,7 @@ def handle_client_request(remote_ip, remote_port, server_id, sockobj):
     if server_id not in registered_server.keys():
       try:
         session.session_sendmessage(sockobj, CONNECT_FAIL)
-      except SockedClosedRemote:
+      except SocketClosedRemote:
         # We don't really care if we couldn't send back the error message...
         pass
 
