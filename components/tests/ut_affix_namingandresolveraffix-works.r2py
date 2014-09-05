@@ -1,0 +1,41 @@
+"""
+Verify that the NamingAndResolverAffix works, i.e. 
+* getmyip() returns the stack identifier that was set,
+* the identifier is announced,
+* network calls can be called with an ID instead of IP address.
+"""
+#pragma repy restrictions.affix dylink.r2py
+#pragma out
+
+affix_stack = dy_import_module("affix_stack.r2py")
+advertise = dy_import_module("advertise.r2py")
+
+stack_id = "my-pseudorandom-desired-stack-id-" + str(getruntime())
+log("Using stack_id", stack_id, "\n")
+
+teststack = affix_stack.AffixStack("(NamingAndResolverAffix," + stack_id + ")")
+
+
+affix_getmyip = teststack.getmyip()
+assert affix_getmyip == stack_id, "Affix stack's getmyip() returned '" + str(affix_getmyip) + "', not the set stack_id '" + str(stack_id) + "'."
+
+# Try to lookup my stack_id a few times. It might take longer for 
+# the advertise services to pick up the value if you work from 
+# remote places...
+sleeptime = 0.1
+for i in range(5):
+  lookup_results = advertise.advertise_lookup(stack_id)
+  actual_ip = getmyip()
+  if actual_ip not in lookup_results:
+    log("Did not see my IP on the advertise services yet....\n")
+    sleep(sleeptime)
+    sleeptime *= 2
+  else:
+    break
+
+assert actual_ip in lookup_results, "Could not find my actual IP address '" + str(actual_ip) + "' in advertise's lookup results '" + str(lookup_results) + "'."
+
+# I need to force-exit because advertisepipe / NamingAndResolverAffix 
+# launched eternal threads...
+exitall()
+

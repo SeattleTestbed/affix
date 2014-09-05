@@ -1,0 +1,76 @@
+"""
+test_makemehearaffix_namingandresolveraffix.r2py
+
+This script is not meant as a unit test, but rather as an interactive 
+functional check for MakeMeHearAffix and NamingAndResolverAffix.
+
+Start the script, disconnect from the network, reconnect etc. and 
+see whether MakeMeHearAffix still makes the node hear.
+
+Usage:
+  python repy.py restrictionsfile dylink.r2py \
+      test_makemehearaffix_namingandresolveraffix.r2py
+"""
+affix_stack = dy_import_module("affix_stack.r2py")
+advertise = dy_import_module("advertise.r2py")
+cachedadvertise = dy_import_module("cachedadvertise.r2py")
+
+# Create the Affix stack we will use, set a stack identifier
+stack_id = "trari-trara-die-post-ist-da"
+teststack = affix_stack.AffixStack("(MakeMeHearAffix)(NamingAndResolverAffix," + stack_id + ")")
+
+log("""I'll run in a loop now, printing advertised/locally available info 
+every five seconds. Feel free to disconnect the machine from the 
+network, reconnect, use a VPN, etc. and see what NamingAndResolverAffix 
+makes out of it.
+""")
+
+
+# Make a serversocket. We'll trace its advertisement string throughout.
+def make_server_socket():
+  for listenport in list(getresources()[0]["connport"]):
+    try:
+      serversocket = teststack.listenforconnection(teststack.getmyip(), 
+          listenport)
+      log("serversocket uses", teststack.get_advertisement_string(), 
+          "to listen on port", str(listenport), "\n")
+      return serversocket
+    except Exception, e:
+      log("Exception trying to listen on port", str(listenport), repr(e), "\n")
+  else:
+    log("Could not listen on any connport. Exiting.\n")
+    exitall()
+
+serversocket = make_server_socket()
+
+while True:
+  try:
+    advertised_id = advertise.advertise_lookup(stack_id)
+  except Exception, e:
+    advertised_id = ["Error: " + repr(e)]
+
+  try:
+    cachedadvertise_id = cachedadvertise.lookup(stack_id)
+  except Exception, e:
+    cachedadvertised_id = ["Error: " + repr(e)]
+
+  try:
+    serversocket.getconnection()
+  except SocketWouldBlockError:
+    pass
+  except TCPServerSocketInvalidError:
+    # If the old socket became invalid, make a new one!
+    serversocket.close()
+    serversocket = make_server_socket()
+    
+
+  log("thread count is " + str(getresources()[1]["events"]) + 
+      ", stack_id is '" + stack_id +  
+      "', getmyip() returns " + getmyip() + 
+      ", Affix'ed getmyip() returns '" + teststack.getmyip() + 
+      "', advertise_lookup yields " + str(advertised_id) + 
+      ", cachedadvertise.lookup yields '" + str(cachedadvertise_id) + 
+      "', server would advertise '" + teststack.get_advertisement_string() + 
+      "'\n")
+
+  sleep(5)

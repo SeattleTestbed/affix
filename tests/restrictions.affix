@@ -1,0 +1,31 @@
+resource cpu .50
+resource memory 20000000   # 20 Million bytes
+resource diskused 100000000 # 100 MB
+resource events 10
+resource filewrite 10000000000
+resource fileread 10000000000
+resource filesopened 20
+resource insockets 10
+resource outsockets 10
+resource netsend 1000000
+resource netrecv 1000000
+resource loopsend 1000000
+resource looprecv 1000000
+resource lograte 3000000
+resource random 100000
+resource connport 12345 # Use for first source port for openconnection.
+resource connport 12346 # Use for extra source port for openconnection.
+resource connport 12347 # Use for extra source port for openconnection.
+resource connport 12348 # Use for extra source port for openconnection.
+resource connport 12349 # Use for extra source port for openconnection.
+resource connport 12350 # Use for extra source port for openconnection.
+resource connport 12351 # Use for extra source port for openconnection.
+resource connport 12352 # Use for extra source port for openconnection.
+resource connport 12353 # Use for extra source port for openconnection.
+resource connport 12354 # Use for extra source port for openconnection.
+resource connport 12355 # Use for extra source port for openconnection.
+resource connport 12356 # Use for extra source port for openconnection.
+resource connport 12357 # Use for extra source port for openconnection.
+resource connport 12358 # Use for extra source port for openconnection.
+resource connport 12359 # Use for extra source port for openconnection.
+resource connport 12360 # Use for extra source port for openconnection.

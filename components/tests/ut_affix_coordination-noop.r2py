@@ -1,0 +1,67 @@
+#pragma repy restrictions.affix dylink.r2py
+#pragma out
+
+affix_stack = dy_import_module("affix_stack.r2py")
+
+affix_server_string = '(CoordinationAffix)(NoopAffix)'
+affix_client_string = '(CoordinationAffix)'
+listen_port = 12345
+client_port = 12346
+
+transmit_msg = "Hello World"
+byte_size = 1024
+
+def server():
+  log("server: Create Affix stack.\n")
+  affix_server_obj = affix_stack.AffixStack(affix_server_string)
+  log("server: Create a listening socket and wait for incoming connection.\n")
+  serversock = affix_server_obj.listenforconnection(getmyip(), listen_port)
+  log("server: Done starting to listen, now waiting for client to connect.\n")
+
+  while True:
+    try:
+      rip, rport, sockobj = serversock.getconnection()
+      break   
+    except SocketWouldBlockError:
+      sleep(0.1)
+    except SocketClosedRemote:
+      raise Exception("Socket closed before server received connection.")
+
+  # Once we have received connection, receive incoming message.
+  while True:
+    try:
+      msg = sockobj.recv(byte_size)
+      break
+    except SocketWouldBlockError:
+      sleep(0.1)
+    except SocketClosedRemote:
+      raise Exception("Socket closed before server received message.")
+
+  # Confirm the received message is correct.
+  assert(msg==transmit_msg)
+  log("server: Test Passed\n")
+  sockobj.close()
+  exitall()
+
+
+# Launch the Server and give it a few second to start up.
+createthread(server)
+sleep(2)
+
+log("client: Create Affix stack.\n")
+client_affix = affix_stack.AffixStack(affix_client_string)
+
+log("client: Connect to server.\n")
+client_sock = client_affix.openconnection(getmyip(), listen_port, getmyip(), client_port, 10) 
+
+log("client: Transmit test message.\n")
+client_sock.send(transmit_msg)
+
+# Wait 10 second for server to receive and verify message
+# then close socket and end program.
+sleep(10)
+
+log("client: Done sending, close socket.\n")
+client_sock.close()
+
+exitall()

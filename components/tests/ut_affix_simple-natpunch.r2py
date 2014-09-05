@@ -1,0 +1,70 @@
+#pragma repy restrictions.affix dylink.r2py
+#pragma out
+
+affix_stack = dy_import_module("affix_stack.r2py")
+advertise = dy_import_module("advertise.r2py")
+random = dy_import_module("random.r2py")
+
+# Retrieve the set of forwarders available, and shuffle the list of 
+# available forwarder, then pick one.
+nat_forwarder_list = advertise.advertise_lookup('__NAT_AFFIX_FORWARDER__')
+random.random_shuffle(nat_forwarder_list)
+forwarder_address = nat_forwarder_list[0]
+
+log("Using forwarder:", forwarder_address)
+
+affix_server_string = '(TCPRelayAffix,%s)' % forwarder_address
+affix_client_string = '(TCPRelayAffix,%s)' % forwarder_address
+listen_port = 12345
+client_port = 12346
+
+transmit_msg = "Hello World"
+byte_size = 1024
+
+def server():
+  # Create a listening socket and wait for incoming connection.
+  affix_server_obj = affix_stack.AffixStack(affix_server_string)
+  serversock = affix_server_obj.listenforconnection(getmyip(), listen_port)
+
+  while True:
+    try:
+      rip, rport, sockobj = serversock.getconnection()
+      break   
+    except SocketWouldBlockError:
+      sleep(0.1)
+    except SocketClosedRemote:
+      raise Exception("Socket closed before server received connection.")
+
+  # Once we have received connection, receive incoming message.
+  while True:
+    try:
+      msg = sockobj.recv(byte_size)
+      break
+    except SocketWouldBlockError:
+      sleep(0.1)
+    except SocketClosedRemote:
+      raise Exception("Socket closed before server received message.")
+
+  # Confirm the received message is correct.
+  assert(msg==transmit_msg)
+  log("Test Passed")
+  sockobj.close()
+  exitall()
+
+
+# Launch the Server and give it a few second to start up.
+createthread(server)
+sleep(5)
+
+# Create a client socket and connect to the server. After
+# connecting to the server, send a message to the server.
+client_affix = affix_stack.AffixStack(affix_client_string)
+client_sock = client_affix.openconnection(getmyip(), listen_port, getmyip(), client_port, 10) 
+
+client_sock.send(transmit_msg)
+
+# Wait 10 second for server to receive and verify message
+# then close socket and end program.
+sleep(10)
+client_sock.close()
+exitall()

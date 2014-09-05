@@ -1,0 +1,27 @@
+"""
+Connect to myself using the Affix string (CoordinationAffix)(TCPRelayAffix).
+This test relies on the actual advertise services and NAT forwarders to 
+run.
+If anything goes wrong, an exception is raised.
+"""
+#pragma repy restrictions.affix dylink.r2py
+#pragma out
+
+dy_import_module_symbols("affix_stack.r2py")
+
+# Set up the Affix stack to use, and override the network calls we need
+affix_object = AffixStack("(CoordinationAffix)(TCPRelayAffix)")
+listenforconnection = affix_object.listenforconnection
+openconnection = affix_object.openconnection
+
+# Import the actual test
+dy_import_module_symbols("ut_repyv2api_tcpconnectiontest.r2py")
+
+createthread(launch_server)
+# Wait a bit until the server has launched, advertised its Affix stack etc.
+sleep(5)
+createthread(connect_and_send_message)
+
+sleep(10)
+exitall()
+

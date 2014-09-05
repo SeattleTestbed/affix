@@ -1,0 +1,45 @@
+"""
+watch_namingandresolveraffix_work.r2py
+
+This script is not meant as a unit test, but rather as an interactive 
+functional check for the NamingAndResolverAffix.
+
+Start the script, disconnect from the network, reconnect etc. and 
+see what NamingAndResolverAffix does / advertises / returns for 
+getmyip().
+
+Usage:
+  python repy.py restrictionsfile dylink.r2py \
+      watch_namingandresolveraffix_work.r2py
+"""
+affix_stack = dy_import_module("affix_stack.r2py")
+advertise = dy_import_module("advertise.r2py")
+cachedadvertise = dy_import_module("cachedadvertise.r2py")
+
+# Create the Affix stack we will use, set a stack identifier
+stack_id = "trari-trara-die-post-ist-da"
+teststack = affix_stack.AffixStack("(NamingAndResolverAffix," + stack_id + ")")
+
+log("""I'll run in a loop now, printing advertised/locally available info 
+every five seconds. Feel free to disconnect the machine from the 
+network, reconnect, use a VPN, etc. and see what NamingAndResolverAffix 
+makes out of it.
+""")
+
+while True:
+  try:
+    advertised_id = advertise.advertise_lookup(stack_id)
+  except Exception, e:
+    advertised_id = ["Error: " + repr(e)]
+
+  try:
+    cachedadvertise_id = cachedadvertise.lookup(stack_id)
+  except Exception, e:
+    cachedadvertised_id = ["Error: " + repr(e)]
+
+  log("stack_id is '" + stack_id +  
+      "', getmyip() returns " + getmyip() + 
+      ", Affix'ed getmyip() returns '" + teststack.getmyip() + 
+      "', advertise_lookup yields " + str(advertised_id) + 
+      ", cachedadvertise.lookup yields '" + str(cachedadvertise_id) + "'\n")
+  sleep(5)
