@@ -15,7 +15,7 @@
   monzum@cs.washington.edu
 
 <Usage>
-  python repy.py RESTRICTION_FILE dylink.repy tcp_relay.repy TCP_PORT 
+  python repy.py RESTRICTION_FILE dylink.r2py tcp_relay.r2py TCP_PORT 
     [ NAT_FORWARDER_KEY ]
 """
 
