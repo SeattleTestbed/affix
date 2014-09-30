@@ -311,6 +311,11 @@ def handle_server_conn_request(remote_ip, remote_port, server_id, sockobj):
     # XXX Check how the register_lock and the client_lock are used. I believe both were implemented to avoid this problem we are working around here by storing the reference.
     client_lock = registered_server[server_id]['client_lock']
     client_lock.acquire(True)
+
+    # Initialize the client ID in case the ``blanket except'' below 
+    # is reached before an actual ID could be assigned.
+    client_id = "(client_id not initialized)"
+
     try:
       if len(registered_server[server_id]['connected_clients']) < MAX_CLIENTS_PER_SERVER:
         # Retrieve the list of clients that are waiting.
