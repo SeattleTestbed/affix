@@ -48,7 +48,7 @@ class LoggingAffix(baseaffix.BaseAffix):
 
 
   def openconnection(self, destip, destport, localip, localport, timeout):
-    log_call("openconncetion", "destip", destip, "destport", destport, 
+    log_call("openconnection", "destip", destip, "destport", destport, 
         "localip", localip, "localport", localport, "timeout", timeout)
     # We make a copy of ourselves before we do anything as we may have multiple
     # openconnection calls that return multiple real sockets.
@@ -87,7 +87,7 @@ class LoggingAffix(baseaffix.BaseAffix):
 
 
   def tcpserversocket_getconnection(self, tcpserversocket):
-    # XXX This can generate an excessive amount of messages!
+    # XXX This can generate an excessive amount of log messages!
     log_call("socket.getconnection")
     # We make a copy of ourselves before doing a getconnection
     # as this function may be invoked multiple times and each
@@ -107,7 +107,7 @@ class LoggingAffix(baseaffix.BaseAffix):
 
 
   def udpserversocket_getmessage(self, udpserversocket):
-    # XXX This can generate an excessive amount of messages!
+    # XXX This can generate an excessive amount of log messages!
     log_call("socket.getmessage")
     return self.copy().peek().udpserversocket_getmessage(udpserversocket)
 
