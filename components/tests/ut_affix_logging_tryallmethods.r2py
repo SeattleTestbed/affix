@@ -1,0 +1,134 @@
+"""
+Test that using an Affix stack with LoggingAffix on it doesn't 
+raise any errors.
+
+I'm not sure we can do any better without hardcoding lots of 
+expected output strings...
+"""
+#pragma repy restrictions.default dylink.r2py
+#pragma out
+
+affix_stack = dy_import_module("affix_stack.r2py")
+
+teststack = affix_stack.AffixStack("(LoggingAffix)")
+
+tcp_port_list = list(getresources()[0]["connport"])
+udp_port_list = list(getresources()[0]["messport"])
+
+localhost = "127.0.0.1"
+
+
+# getmyip
+teststack.getmyip()
+
+
+# gethostbyname of an IP address returns the IP address unchanged
+teststack.gethostbyname(localhost)
+
+
+# Set up a UDP listen socket
+for udp_listen_port in udp_port_list:
+  try:
+    udp_listen_socket = teststack.listenformessage(localhost, udp_listen_port)
+    break
+  except (DuplicateTupleError, AlreadyListeningError, AddressBindingError):
+    pass
+else:
+  raise "Could not find a UDP port for listening in available port range " + str(udp_port_list)
+
+
+for source_port in udp_port_list:
+  try:
+    teststack.sendmessage(localhost, udp_listen_port, "Hello, UDP listener!", 
+        localhost, source_port)
+    break
+  except (DuplicateTupleError, AlreadyListeningError, AddressBindingError, 
+      RepyArgumentError):
+    pass
+else:
+  raise RepyException("Could not find a UDP source port for sendmess in available port range " + str(udp_port_list))
+
+
+while True:
+  try:
+    # This uses teststack's getmessage without explicit reference
+    udp_listen_socket.getmessage()
+    break
+  except SocketWouldBlockError:
+    sleep(0.1)
+
+udp_listen_socket.close()
+
+
+
+# Set up a TCP listen socket
+for tcp_listen_port in tcp_port_list:
+  try:
+    tcp_listen_socket = teststack.listenforconnection(localhost, tcp_listen_port)
+    break
+  except (DuplicateTupleError, AlreadyListeningError, AddressBindingError):
+    pass
+else:
+  raise RepyException("Could not find a TCP port for listening in available port range " + str(tcp_port_list))
+
+
+# Connect to the listening socket
+for source_port in tcp_port_list:
+  try:
+    send_socket = teststack.openconnection(localhost, tcp_listen_port, 
+        localhost, source_port, 10)
+    break
+  except (DuplicateTupleError, AlreadyListeningError, AddressBindingError, 
+      RepyArgumentError, CleanupInProgressError):
+    pass
+else:
+  raise RepyException("Could not find a UDP source port for sendmess in available port range " + str(udp_port_list))
+
+
+# Get the incoming connection off the listening socket
+while True:
+  try:
+    remote_ip, remote_port, recv_socket = tcp_listen_socket.getconnection()
+    break
+  except SocketWouldBlockError:
+    sleep(0.1)
+
+
+# Test send/recv on one side...
+try:
+  send_socket.send("Hello TCP listen socket!")
+except SocketWouldBlockError:
+  pass
+
+try:
+  send_socket.recv(100)
+except SocketWouldBlockError:
+  pass
+
+try:
+  recv_socket.recv(100)
+except SocketWouldBlockError:
+  pass
+
+# ...and the other, and then ...
+try:
+  recv_socket.send("Hi you there on the other side!")
+except SocketWouldBlockError:
+  pass
+
+
+# Stop listening.
+tcp_listen_socket.close()
+
+# Close the connected send socket as well (which also closes recv_socket, 
+# the other side of this connection).
+send_socket.close()
+
+
+
+
+# Lastly, test with a log prefix parameter:
+teststack = affix_stack.AffixStack("(LoggingAffix,ThisIsMyLoggingPrefix)")
+
+teststack.getmyip()
+
