@@ -41,14 +41,14 @@ class LoggingAffix(baseaffix.BaseAffix):
       self.affix_context["log prefix"] = "LoggingAffix"
 
 
-  def log_call(*args):
+  def log_call(self, *args):
     """Function to log calls to Affix methods.
 
     Use this in place of Repy's `log` so that it's easy to add 
     prefixes, timestamps, etc. to the LoggingAffix's output.
     """
 
-    log((self.affix_context["log prefix"] + ":"), *args, "\n")
+    log(*((self.affix_context["log prefix"] + ":",) + args + ("\n",)))
 
 
 
