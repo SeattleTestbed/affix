@@ -17,7 +17,6 @@ parameter to LoggingAffix on instantiation:
 """
 
 baseaffix = dy_import_module("baseaffix.r2py")
-affix_exceptions = dy_import_module("affix_exceptions.r2py")
 affix_wrapper_lib = dy_import_module("affix_wrapper_lib.r2py")
 
 
@@ -39,6 +38,17 @@ class LoggingAffix(baseaffix.BaseAffix):
       self.affix_context['log prefix'] = optional_args[0]
     except (TypeError, IndexError):
       self.affix_context["log prefix"] = "LoggingAffix"
+
+
+  def copy(self):
+    reference_to_copy_of_next_affix = self.affix_context['next_affix'].copy()
+    # To reproduce myself, create a new object that is configured 
+    # like I was at instantiation
+    reproduced_self = LoggingAffix(reference_to_copy_of_next_affix, 
+      self.affix_context['optional_args'])
+    # If you store additional state information besides affix_context, 
+    # remember to give it to my reproduced self too!
+    return reproduced_self
 
 
   def log_call(self, *args):
