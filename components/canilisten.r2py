@@ -497,8 +497,8 @@ def get_control_connection_to_server(server_ip, server_port):
       raise
   else:
     raise CanIListenError("Could not contact canilisten server" + 
-        server_ip + ":" + str(server_port) + " for checking listenport " + 
-        str(desired_port) + ". Exceptions encountered:" + str(exceptions_list))
+        server_ip + ":" + str(server_port) + ". Exceptions encountered:" + 
+        str(exceptions_list))
 
 
 
