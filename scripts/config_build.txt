@@ -7,3 +7,5 @@ DEPENDENCIES/common/*
 DEPENDENCIES/common/utf/*
 # Tests
 test tests/*
+test components/tests/*
+test services/tcp_relay/tests/*
