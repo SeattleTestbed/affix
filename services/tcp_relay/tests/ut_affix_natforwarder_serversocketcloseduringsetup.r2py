@@ -63,7 +63,6 @@ dy_import_module_symbols("session.r2py")
 advertisepipe = dy_import_module("advertisepipe.r2py")
 dy_import_module_symbols("affix_stack.r2py")
 dy_import_module_symbols("tcp_relay_common_lib.r2py")
-iplib = dy_import_module("checkprivateipaffix.r2py")
 time = dy_import_module("time.r2py")
 
 
