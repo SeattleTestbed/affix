@@ -133,8 +133,8 @@ def launch_server():
 if callfunc == "initialize":
   """
   # In the program importing this library, you would do something like this:
-  dy_import_module_symbols("affixstackinterface.repy")
-  affix_stack = AffixStackInterface("(MyDesiredAffix1)(MyDesiredAffix2)")
+  dy_import_module_symbols("affix_stack.repy")
+  affix_stack = AffixStack("(MyDesiredAffix1)(MyDesiredAffix2)")
   listenforconnection = affix_stack.listenforconnection
   openconnection = affix_stack.openconnection
 
