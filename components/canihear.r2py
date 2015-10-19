@@ -1,25 +1,34 @@
 """
-canilisten.r2py -- test whether this host can receive incoming 
-  connections from a ``canilisten'' server, or run such a server.
+canihear.r2py -- test whether this host can receive (i.e. hear) incoming 
+  connections from a ``canihear'' server, or run such a server.
 
 USAGE as a client-side library:
+check
+    to check if you can hear an incoming connection from one of 
+    Seattle's ``canihear'' servers (randomly chosen) on a TCP port 
+    (also randomly chosen).
+    This function returns a bool:
+        True if you could hear the connection, 
+        False if you could not hear it.
+
+The following functions allow for more fine-grained testing, and 
+return more detailed (port / IP remapping) information.
+Either function will return a tuple
+  (i_can_hear, apparent_ip, outgoing_port_is_remapped).
+
 check_random_port
-    to check if you can listen on a TCP port (randomly chosen from 
-    the available ports) for incoming connections from one of 
-    Seattle's ``canilisten'' servers (also randomly chosen) 
+    as with `check` above, but returning extra details
 check_specific_port
-    to check if you can listen on your desired port with a randomly 
+    to check if you can hear on your desired port with a randomly 
     chosen server
 check_port_with_specific_server
     to check your desired port with a server you specify
 
-Either function will return a tuple
-  (i_can_listen, apparent_ip, outgoing_port_is_remapped).
 
 
 USAGE as a server-side library:
 start_server 
-  to run a ``canilisten'' server on an available port
+  to run a ``canihear'' server on an available port
 start_server(SERVER_PORT)
   to run a server on SERVER_PORT. 
 
@@ -29,12 +38,12 @@ in CAN_I_LISTEN_KEY on Seattle's advertisement services.
 
 
 USAGE as a stand-alone program in client mode:
-  python repy.py restrictionsfile dylink.r2py canilisten.r2py [ PORT ]
+  python repy.py restrictionsfile dylink.r2py canihear.r2py [ PORT ]
 where PORT is an optional port you would like to listen on (and have tested).
 If not specified, a usable port is auto-detected.
 
 USAGE as a stand-alone program in server mode:
-  python repy.py restrictionsfile dylink.r2py canilisten.r2py server [ PORT ]
+  python repy.py restrictionsfile dylink.r2py canihear.r2py server [ PORT ]
 where ``server'' is a verbatim command to start server mode, and 
 PORT is an optional listen port for the server. If not specified, a usable 
 port is auto-detected.
@@ -43,9 +52,9 @@ port is auto-detected.
 
 IMPLEMENTATION DETAILS
 Approximate flow of events between client and server:
-. Servers announces ("canilisten", its IP + ":" + its port)
+. Servers announces ("canihear", its IP + ":" + its port)
 . Client calls listenforconnection on the desired port
-. Client looks up "canilisten", receives server IP and port
+. Client looks up "canihear", receives server IP and port
 . Client contacts server: "My local IP is ....., please connect back to me 
     on port ...."
 . Server replies: "Your apparent IP is ....., I'll connect to you now. 
@@ -74,7 +83,7 @@ Technical description:
   can see whether its IP or port mapping is modified in transit.
   TEST_MESSAGE is a random circa-1kB message that the client can use to 
   verify that it is seeing the expected incoming connection from the 
-  canilisten server.
+  canihear server.
 
 
 TODO
@@ -83,7 +92,7 @@ We should allow running servers or clients on specific interfaces
 gives us.
 """
 
-CAN_I_LISTEN_KEY = "canilisten"
+CAN_I_LISTEN_KEY = "canihear"
 
 
 advertise = dy_import_module("advertise.r2py")
@@ -160,7 +169,7 @@ def create_client_handler(remote_ip, remote_port, client_socket):
     """
     Receive a message from the client, reply with the client's apparent 
     IP and source port, and connect to the apparent IP on the desired 
-    port to see if the client can listen there. If the client is able 
+    port to see if the client can hear there. If the client is able 
     to accept the incoming connection, send a test message.
     """
     try:
@@ -271,7 +280,7 @@ def create_client_handler(remote_ip, remote_port, client_socket):
 
 def start_server(server_port=None):
   """
-  Start a canilisten server listening on server_port. 
+  Start a canihear server listening on server_port. 
   If server_port is left undefined, try all of the allowed 
   ports until one succeeds.
   """
@@ -354,8 +363,8 @@ def check_random_port():
 
 def check_specific_port(desired_port):
   """
-  Check whether we can listen for incoming connections on desired_port (TCP) 
-  from a randomly chosen ``canilisten'' server.
+  Check whether we can hear incoming connections on desired_port (TCP) 
+  from a randomly chosen ``canihear'' server.
   """
   listen_socket = sockettimeout.timeout_listenforconnection(getmyip(), desired_port)
 
@@ -390,11 +399,11 @@ def check_specific_port(desired_port):
 
 def check_port_with_specific_server(server_ip, server_port, listen_socket, desired_port):
   """
-  This function performs the actual ``canilisten'' test with a server. 
+  This function performs the actual ``canihear'' test with a server. 
   It returns a tuple
-    (i_can_listen, apparent_ip, outgoing_port_is_remapped) where
+    (i_can_hear, apparent_ip, outgoing_port_is_remapped) where
 
-  i_can_listen is True if the server was able to connect to us on 
+  i_can_hear is True if the server was able to connect to us on 
     desired_port and send its test message
   apparent_ip is this node's IP address as seen by the server, i.e. our 
     "external IP" in the case of a NATted node
@@ -410,7 +419,7 @@ def check_port_with_specific_server(server_ip, server_port, listen_socket, desir
     session.SessionEOF if the server signals it closes the control 
       or probe connections 
   """
-  i_can_listen, apparent_ip, outgoing_port_is_remapped = None, None, None
+  i_can_hear, apparent_ip, outgoing_port_is_remapped = None, None, None
 
   # Open the control connection to the server
   server_socket, source_port = \
@@ -473,7 +482,7 @@ def check_port_with_specific_server(server_ip, server_port, listen_socket, desir
 
 def get_control_connection_to_server(server_ip, server_port):
   """
-  Helper function to connect to the specified canilisten server.
+  Helper function to connect to the specified canihear server.
 
   Returns a tuple (server_socket, source_port) where
   server_socket is the socket-like object to communicate with the server;
@@ -484,7 +493,7 @@ def get_control_connection_to_server(server_ip, server_port):
   random.random_shuffle(allowed_ports)
   exceptions_list = []
   for source_port in allowed_ports:
-    logtn("Trying canilisten server", server_ip, "on port", server_port)
+    logtn("Trying canihear server", server_ip, "on port", server_port)
     try:
       return (sockettimeout.timeout_openconnection(server_ip, server_port, 
           getmyip(), source_port, 5), source_port)
@@ -496,7 +505,7 @@ def get_control_connection_to_server(server_ip, server_port):
     except ConnectionRefusedError:
       raise
   else:
-    raise CanIListenError("Could not contact canilisten server" + 
+    raise CanIListenError("Could not contact canihear server" + 
         server_ip + ":" + str(server_port) + ". Exceptions encountered:" + 
         str(exceptions_list))
 
@@ -505,7 +514,7 @@ def get_control_connection_to_server(server_ip, server_port):
 
 def request_connection_and_get_apparent_address(server_socket, desired_port):
   """
-  Helper function to contact the canilisten server, request it to 
+  Helper function to contact the canihear server, request it to 
   connect back in to us on desired_port, and also learn the apparent IP 
   address and source port the server sees on the control connection.
 
@@ -549,7 +558,7 @@ def get_probe_socket(listen_socket, server_ip):
       (remote_ip, remote_port, raw_probe_socket) = \
           listen_socket.getconnection(timeout=10)
       if remote_ip != server_ip:
-        # Someone else is connecting, not the expected canilisten 
+        # Someone else is connecting, not the expected canihear 
         # server. Close and keep listening.
         raw_probe_socket.close()
       else:
@@ -567,25 +576,25 @@ def get_probe_socket(listen_socket, server_ip):
 
 def usage():
   log("""
-canilisten.r2py -- 
+canihear.r2py -- 
 
-SERVER mode: Run a ``canilisten'' server to connect back to a client 
+SERVER mode: Run a ``canihear'' server to connect back to a client 
   on a TCP port they specify, and send a test message. Useful for checking 
   for firewalls and NATs.
 
 USAGE:
-python repy.py restrictionsfile dylink.r2py canilisten.r2py server [ PORT ]
+python repy.py restrictionsfile dylink.r2py canihear.r2py server [ PORT ]
 
 where the optional callarg PORT is the server port I will listen on. If 
 omitted, I will choose a port on my own. I'll later advertise my IP and 
-server port under the ```canilisten'' key on the Seattle advertise services, 
+server port under the ```canihear'' key on the Seattle advertise services, 
 so you will still be able to find me.
 
 
-CLIENT mode: query a canilisten_server for this host's listen-abilities.
+CLIENT mode: query a canihear_server for this host's hear-abilities.
 
 USAGE:
-  python repy.py restrictionsfile dylink.r2py canilisten.r2py [ PORT ]
+  python repy.py restrictionsfile dylink.r2py canihear.r2py [ PORT ]
 
 PORT is an optional listening port you would like the server to check. 
 If omitted, a random allowed port is chosen instead.
@@ -595,8 +604,8 @@ If omitted, a random allowed port is chosen instead.
 
 if callfunc == "initialize":
   """
-  This is the "executable" portion of canilisten.r2py. 
-  It lets you run a ``canilisten'' server or client 
+  This is the "executable" portion of canihear.r2py. 
+  It lets you run a ``canihear'' server or client 
   interactively.
   """
   # Find a port for getting an NTP timestamp. 
@@ -621,14 +630,14 @@ if callfunc == "initialize":
   try:
     client_port = int(callargs[0])
     success, ip, port_remapped = check_specific_port(client_port)
-    log("I could " + "not" * (not success) + " listen on port " + 
+    log("I could " + "not" * (not success) + " hear on port " + 
         str(client_port) + ". My local/external IPs are " + getmyip() + "/" + 
         ip + ", and my outgoing port was " + "not" * (not port_remapped) + " remapped.\n")
     exitall()
   except IndexError:
     # There is no callarg -- we are in client auto-configure mode.
     success, ip, port_remapped = check_random_port()
-    log("I could " + "not" * (not success) + " listen on a random port." + 
+    log("I could " + "not" * (not success) + " hear on a random port." + 
         "My local/external IPs are " + getmyip() + "/" + ip + 
         ", and my outgoing port was " + "not" * (not port_remapped) + " remapped.\n")
     exitall()

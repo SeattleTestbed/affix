@@ -23,7 +23,7 @@ session = dy_import_module("session.r2py")
 advertisepipe = dy_import_module("advertisepipe.r2py")
 affix_stack = dy_import_module("affix_stack.r2py")
 dy_import_module_symbols("tcp_relay_common_lib.r2py")
-canilisten = dy_import_module("canilisten.r2py")
+canihear = dy_import_module("canihear.r2py")
 time = dy_import_module("time.r2py")
 
 
@@ -667,7 +667,7 @@ if callfunc == 'initialize':
   
   myip, myport = getmyip(), mycontext['listenport_tcp']
 
-  (i_can_listen, ignore, ignore) = canilisten.check_specific_port(myport)
+  (i_can_hear, ignore, ignore) = canihear.check_specific_port(myport)
 
   if not i_can_listen:
     logmsg(

@@ -18,7 +18,7 @@
   user-configurable Affix components depending on the result in order 
   to make it hear (as the name implies).
 
-  The check is performed with Seattle's ``canilisten'' servers: We 
+  The check is performed with Seattle's ``canihear'' servers: We 
   ask them to connect in on a specific TCP port, and send a test 
   message if the connection attempt is successful. If it is not, then 
   it's likely that the node is behind a NAT gateway or firewall. 
@@ -36,7 +36,7 @@ affix_exceptions = dy_import_module("affix_exceptions.r2py")
 affix_wrapper_lib = dy_import_module("affix_wrapper_lib.r2py")
 advertise = dy_import_module("advertise.r2py") # For AdvertiseError
 cachedadvertise = dy_import_module("cachedadvertise.r2py")
-canilisten = dy_import_module("canilisten.r2py")
+canihear = dy_import_module("canihear.r2py")
 
 
 
@@ -107,9 +107,9 @@ class MakeMeHearAffix(baseaffix.BaseAffix):
     <Return>
       A listening socket.
     """
-    log("Running canilisten test for local address", localip, "port", localport, "\n")
+    log("Running canihear test for local address", localip, "port", localport, "\n")
     try:
-      (can_hear_on_localport, _, _)  = canilisten.check_specific_port(localport)
+      (can_hear_on_localport, _, _)  = canihear.check_specific_port(localport)
     except (AlreadyListeningError, DuplicateTupleError, RepyArgumentError, 
         ResourceForbiddenError, AddressBindingError):
       # check_specific_port can raise these errors when it tries to 
@@ -117,19 +117,19 @@ class MakeMeHearAffix(baseaffix.BaseAffix):
       # The user must expect these from plain listenforconnection, 
       # so we raise them.
       raise
-    except (advertise.AdvertiseError, canilisten.CanIListenError, TimeoutError), e:
+    except (advertise.AdvertiseError, canihear.CanIHearError, TimeoutError), e:
       # XXX Can't catch AdvertiseError???
 
-      # These mean we couldn't find/contact canilisten servers. 
+      # These mean we couldn't find/contact canihear servers. 
       # I'll treat this as an error and not try to work around. 
       # (Another option would be to continue and assume we can't 
       # hear on localport. This however means that an error in 
-      # the canilisten/advertise services will cause all previously 
+      # the canihear/advertise services will cause all previously 
       # non-relayed nodes to thrash our TCP relays, and possibly 
       # knock out advertise/relay services. 
-      # Conversely, assuming we *can* listen, yields a de-facto 
+      # Conversely, assuming we *can* hear, yields a de-facto 
       # unusable port, see the comment below).
-      raise AddressBindingError("MakeMeHearAffix: Error looking up or contacting canilisten servers. Exception encountered: " + repr(e))
+      raise AddressBindingError("MakeMeHearAffix: Error looking up or contacting canihear servers. Exception encountered: " + repr(e))
 
     # Add in an Affix (the TCPRelayAffix per default) if we cannot 
     # hear on localport; add in a supposedly other (the NoopAffix 

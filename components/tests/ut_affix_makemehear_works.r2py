@@ -3,15 +3,15 @@ Run a server that decides whether it needs a TCP relay for listening
 via the MakeMeHearAffix, and a client that connects to the server that 
 also auto-configures its outgoing connection using a CoordinationAffix.
 This test relies on the actual advertise services, TCP relays, and 
-canilisten servers to run.
+canihear servers to run.
 If anything goes wrong, an exception is raised.
 
 Note that there is quite a bit of setup involved, so the timeouts 
 are chosen rather generously:
 . In MakeMeHearAffix (server thread)
-  - Look up canilisten server
-  - Contact canilisten server to have it connect back in
-. If we cannot listen, then in TCPRelayAffix (server thread)
+  - Look up canihear server
+  - Contact canihear server to have it connect back in
+. If we cannot hear, then in TCPRelayAffix (server thread)
   - Set up a TCP relay that will listen on our behalf
 . In CoordinationAffix
   - announce Affix string required for the listening socket (server thread)
