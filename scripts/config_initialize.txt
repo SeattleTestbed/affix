@@ -1,3 +1,4 @@
 https://github.com/SeattleTestbed/seattlelib_v2 ../DEPENDENCIES/seattlelib_v2
 https://github.com/SeattleTestbed/repy_v2 ../DEPENDENCIES/repy_v2
 https://github.com/SeattleTestbed/common ../DEPENDENCIES/common
+https://github.com/SeattleTestbed/utf ../DEPENDENCIES/utf

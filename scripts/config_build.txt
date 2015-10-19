@@ -4,6 +4,8 @@ services/tcp_relay/*
 DEPENDENCIES/repy_v2/*
 DEPENDENCIES/seattlelib_v2/*
 DEPENDENCIES/common/*
-DEPENDENCIES/common/utf/*
 # Tests
+test DEPENDENCIES/utf/*
 test tests/*
+test components/tests/*
+test services/tcp_relay/tests/*
