@@ -15,8 +15,8 @@
   monzum@cs.washington.edu
 
 <Usage>
-  python repy.py RESTRICTION_FILE dylink.r2py tcp_relay.r2py TCP_PORT 
-    [ NAT_FORWARDER_KEY ]
+  python repy.py RESTRICTION_FILE dylink.r2py tcp_relay.r2py [ TCP_PORT 
+    [ NAT_FORWARDER_KEY ]]
 """
 
 session = dy_import_module("session.r2py")
@@ -654,22 +654,39 @@ if callfunc == 'initialize':
   logmsg("MAX_SERVERS: " + str(MAX_SERVERS) +
     ", MAX_CLIENTS_PER_SERVER: " + str(MAX_CLIENTS_PER_SERVER), INFO_MSG)
 
-
-  if len(callargs) < 1:
-    log("Usage:\n\tpython repy.py restrictionsfile dylink.r2py tcp_relay.r2py TCP_PORT [FORWARDER_KEY]\n") # XXX Allow for port autoconfiguration!
-    exitall()
-
-  mycontext['listenport_tcp'] = int(callargs[0])
-
-  if len(callargs) >= 2:
-    # Override tcp_relay_common_lib's key
+  # Let the user override the key we advertise
+  try:
     NAT_FORWARDER_KEY = callargs[1]
-  
+  except IndexError:
+    pass
+
+  # Let the user specify a listen port if they wish so
+  try:
+    mycontext['listenport_tcp'] = int(callargs[0])
+  except ValueError:
+    # We couldn't parse the command-line arg. Explain what we understand.
+    log("Usage:\n\tpython repy.py restrictionsfile dylink.r2py tcp_relay.r2py [TCP_PORT [FORWARDER_KEY]]\n")
+    exitall()
+  except IndexError:
+    # There was no TCP_PORT arg, so we will pick one pseudo-randomly.
+    # XXX We should rewrite this so as to test whether the chosen port 
+    # XXX is blocked in the first place, but this requires changes 
+    # XXX to the threaded function etc. that I won't do just now.
+    available_ports = list(getresources()[0]["connport"])
+    now = getruntime()
+    index = int(len(available_ports) * (now - int(now)))
+    mycontext['listenport_tcp'] = available_ports[index]
+
   myip, myport = getmyip(), mycontext['listenport_tcp']
 
-  (i_can_hear, ignore, ignore) = canihear.check_specific_port(myport)
+  i_can_hear = False
+  try:
+    (i_can_hear, ignore, ignore) = canihear.check_specific_port(myport)
+  except canihear.CanIHearError:
+    # Couldn't run the `canihear` test. Ignore.
+    pass
 
-  if not i_can_listen:
+  if not i_can_hear:
     logmsg(
 """NOTE WELL: It seems that your node is not able to receive incoming 
 connections from the public Internet. This probably leaves the TCP relay 
@@ -683,5 +700,6 @@ I'll let you proceed regardless. You hopefully know what you do.""", ERR_MSG)
   # Launch advertiser and advertise this forwarders ip address, tcp port.
   advertise_value = myip + ':' + str(myport)
   logmsg("Starting advertise thread for " + NAT_FORWARDER_KEY + 
-    ": " + advertise_value, INFO_MSG)
+      ": " + advertise_value, INFO_MSG)
   advertisepipe.add_to_pipe(NAT_FORWARDER_KEY, advertise_value)
+
