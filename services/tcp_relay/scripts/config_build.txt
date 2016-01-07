@@ -1,0 +1,27 @@
+# Build config for TCP relays.
+# We assume that SeattleTestbed/affix has been checked out in full.
+# Our CWD is path/to/affix/services/tcp_relay
+tcp_relay.r2py
+../../components/tcp_relay_common_lib.r2py
+../../components/baseaffix.r2py
+../../components/canihear.r2py
+../../*
+DEPENDENCIES/seattlelib_v2/dylink.r2py
+DEPENDENCIES/seattlelib_v2/advertise.r2py
+DEPENDENCIES/seattlelib_v2/centralizedadvertise.r2py
+DEPENDENCIES/seattlelib_v2/centralizedadvertise_v2.r2py
+DEPENDENCIES/seattlelib_v2/udpcentralizedadvertise.r2py
+DEPENDENCIES/seattlelib_v2/advertisepipe.r2py
+DEPENDENCIES/seattlelib_v2/listops.r2py
+DEPENDENCIES/seattlelib_v2/math.r2py
+DEPENDENCIES/seattlelib_v2/parallelize.r2py
+DEPENDENCIES/seattlelib_v2/random.r2py
+DEPENDENCIES/seattlelib_v2/serialize.r2py
+DEPENDENCIES/seattlelib_v2/session.r2py
+DEPENDENCIES/seattlelib_v2/sockettimeout.r2py
+DEPENDENCIES/seattlelib_v2/uniqueid.r2py
+DEPENDENCIES/seattlelib_v2/time.r2py
+DEPENDENCIES/seattlelib_v2/time_interface.r2py
+DEPENDENCIES/seattlelib_v2/ntp_time.r2py
+DEPENDENCIES/seattlelib_v2/tcp_time.r2py
+
