@@ -3,7 +3,7 @@ canihear.r2py -- test whether this host can receive (i.e. hear) incoming
   connections from a ``canihear'' server, or run such a server.
 
 USAGE as a client-side library:
-check
+* check
     to check if you can hear an incoming connection from one of 
     Seattle's ``canihear'' servers (randomly chosen) on a TCP port 
     (also randomly chosen).
@@ -16,24 +16,24 @@ return more detailed (port / IP remapping) information.
 Either function will return a tuple
   (i_can_hear, apparent_ip, outgoing_port_is_remapped).
 
-check_random_port
+* check_random_port
     as with `check` above, but returning extra details
-check_specific_port
+* check_specific_port
     to check if you can hear on your desired port with a randomly 
     chosen server
-check_port_with_specific_server
+* check_port_with_specific_server
     to check your desired port with a server you specify
 
 
 
 USAGE as a server-side library:
-start_server 
+* start_server 
   to run a ``canihear'' server on an available port
-start_server(SERVER_PORT)
+* start_server(SERVER_PORT)
   to run a server on SERVER_PORT. 
 
 The server will always advertise its IP and port using the key 
-in CAN_I_LISTEN_KEY on Seattle's advertisement services.
+in CAN_I_HEAR_KEY on Seattle's advertisement services.
 
 
 
@@ -52,19 +52,19 @@ port is auto-detected.
 
 IMPLEMENTATION DETAILS
 Approximate flow of events between client and server:
-. Servers announces ("canihear", its IP + ":" + its port)
-. Client calls listenforconnection on the desired port
-. Client looks up "canihear", receives server IP and port
-. Client contacts server: "My local IP is ....., please connect back to me 
+* Servers announces ("canihear", its IP + ":" + its port)
+* Client calls listenforconnection on the desired port
+* Client looks up "canihear", receives server IP and port
+* Client contacts server: "My local IP is ....., please connect back to me 
     on port ...."
-. Server replies: "Your apparent IP is ....., I'll connect to you now. 
+* Server replies: "Your apparent IP is ....., I'll connect to you now. 
     My test message will be ...."
-. Server connects to apparent IP : port
-. Server sends test message
-. Both hang up.
+* Server connects to apparent IP : port
+* Server sends test message
+* Both hang up.
 
 Technical description:
-. Client sends serialize_serializedata({
+* Client sends serialize_serializedata({
     "scrambled local ip and desired port": SCRAMBLED_IP_AND_PORT, 
     "magic cookie": MAGIC_COOKIE
     })
@@ -73,7 +73,7 @@ Technical description:
   and MAGIC_COOKIE is a random string equal in length to SCRAMBLED_IP_AND_PORT.
   (The XORing method is proposed in the STUN/TURN RFCs to protect against 
   NAT boxes inspecting and modifying the application-layer contents.)
-. Service replies with serialize_serializedata({
+* Service replies with serialize_serializedata({
     "scrambled apparent ip and source port": SCRAMBLED_IP_AND_PORT,
     "magic cookie": MAGIC_COOKIE, 
     "test message": TEST_MESSAGE
@@ -92,7 +92,7 @@ We should allow running servers or clients on specific interfaces
 gives us.
 """
 
-CAN_I_LISTEN_KEY = "canihear"
+CAN_I_HEAR_KEY = "canihear"
 
 
 advertise = dy_import_module("advertise.r2py")
@@ -108,7 +108,7 @@ time = dy_import_module("time.r2py")
 ########################################################################
 # Common definitions
 
-class CanIListenError(RepyException):
+class CanIHearError(RepyException):
   """Error raised by client-oriented check functions."""
   pass
 
@@ -308,7 +308,7 @@ def start_server(server_port=None):
   # wait for incoming connections, serve them in separate threads.
   # XXX We silently assume that our IP doesn't change!
   logtn("Listening on " + getmyip() + ":" + str(server_port))
-  advertise_handle = advertisepipe.add_to_pipe(CAN_I_LISTEN_KEY, 
+  advertise_handle = advertisepipe.add_to_pipe(CAN_I_HEAR_KEY, 
       getmyip() + ":" + str(server_port))
 
   while True:
@@ -339,6 +339,17 @@ def start_server(server_port=None):
 
 
 
+def check():
+  """
+  See if a randomly chosen TCP port allowed on this vessel can be used to 
+  listen for incoming connections.
+
+  Return True if the incoming connection could be heard, and False if not.
+  """
+  return check_random_port()[0]
+
+
+
 def check_random_port():
   """
   See if a randomly chosen TCP port allowed on this vessel can be used to 
@@ -355,7 +366,7 @@ def check_random_port():
       exceptions_list.append((time.time_gettime(), "Listenport: " + 
           str(port), repr(e)))
   else:
-    raise CanIListenError("Checked all of the allowed ports " + 
+    raise CanIHearError("Checked all of the allowed ports " + 
         str(allowed_ports) + ", but only found exceptions: " + str(exceptions_list))
 
 
@@ -366,12 +377,13 @@ def check_specific_port(desired_port):
   Check whether we can hear incoming connections on desired_port (TCP) 
   from a randomly chosen ``canihear'' server.
   """
-  listen_socket = sockettimeout.timeout_listenforconnection(getmyip(), desired_port)
-
-  server_address_list = advertise.advertise_lookup(CAN_I_LISTEN_KEY)
+  server_address_list = advertise.advertise_lookup(CAN_I_HEAR_KEY)
   if server_address_list == []:
-    raise CanIListenError("Did not find any servers advertising " + 
-        CAN_I_LISTEN_KEY)
+    raise CanIHearError("Did not find any servers advertising " + 
+        CAN_I_HEAR_KEY)
+
+  # Only set up a listening socket if there are servers advertising.
+  listen_socket = sockettimeout.timeout_listenforconnection(getmyip(), desired_port)
 
   exceptions_list = []
   random.random_shuffle(server_address_list)
@@ -386,12 +398,12 @@ def check_specific_port(desired_port):
       # We have a valid-looking server IP and port
       try:
         return check_port_with_specific_server(server_ip, server_port, listen_socket, desired_port)
-      except (ConnectionRefusedError, CanIListenError), e:
+      except (ConnectionRefusedError, CanIHearError), e:
         exceptions_list.append((getruntime(), "Server address " + server_address, 
             repr(e)))
         continue
   else:
-    raise CanIListenError("Tried servers " + str(server_address_list) + 
+    raise CanIHearError("Tried servers " + str(server_address_list) + 
         " unsuccessfully. Exceptions seen: " + str(exceptions_list))
 
 
@@ -411,7 +423,7 @@ def check_port_with_specific_server(server_ip, server_port, listen_socket, desir
     connect out to the server is seen unchanged by the server as well.
 
   Exceptions raised are
-    CanIListenError to signal multiple failure conditions XXX as there are???
+    CanIHearError to signal multiple failure conditions XXX as there are???
     ConnectionRefusedError if the server could not be contacted on its 
       stipulated server_port
     ValueError if data on the control or probe connections could 
@@ -475,7 +487,7 @@ def check_port_with_specific_server(server_ip, server_port, listen_socket, desir
     # That's very strange. The server was able to connect back in, 
     # but the test message I received was different from the one 
     # agreed on. I'll cautiously make this an error.
-    raise CanIListenError("Did not receive the expected test message!")
+    raise CanIHearError("Did not receive the expected test message!")
 
 
 
@@ -505,7 +517,7 @@ def get_control_connection_to_server(server_ip, server_port):
     except ConnectionRefusedError:
       raise
   else:
-    raise CanIListenError("Could not contact canihear server" + 
+    raise CanIHearError("Could not contact canihear server" + 
         server_ip + ":" + str(server_port) + ". Exceptions encountered:" + 
         str(exceptions_list))
 
