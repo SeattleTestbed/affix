@@ -1,0 +1,24 @@
+"""Test if an empty list of ``canihear'' servers raises the correct 
+`CanIHearError`.
+"""
+#pragma repy restrictions.default dylink.r2py
+#pragma out
+
+# Override `advertise_lookup` to trip `canihear`
+advertise = dy_import_module("advertise.r2py")
+
+def fake_advertise_lookup(args):
+  return []
+
+advertise.advertise_lookup = fake_advertise_lookup
+
+
+canihear = dy_import_module("canihear.r2py")
+
+
+try:
+  canihear.check_specific_port(list(getresources()[0]["connport"])[0])
+except canihear.CanIHearError:
+  # That's expected!
+  pass
+

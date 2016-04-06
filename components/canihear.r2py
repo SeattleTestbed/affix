@@ -223,7 +223,8 @@ def create_client_handler(remote_ip, remote_port, client_socket):
 	    RepyArgumentError), e:
           logtn("Unsuccessful,", repr(e))
 	  continue
-	except (TimeoutError, ConnectionRefusedError):
+	except (TimeoutError, ConnectionRefusedError, 
+            sockettimeout.SocketTimeoutError):
 	  # Notify the client that we couldn't connect. 
 	  session.session_sendmessage(client_socket, 
 	      "Connection from " + getmyip() + ":" + str(local_port) + 
@@ -376,12 +377,16 @@ def check_specific_port(desired_port):
   Check whether we can hear incoming connections on desired_port (TCP) 
   from a randomly chosen ``canihear'' server.
   """
-  server_address_list = advertise.advertise_lookup(CAN_I_HEAR_KEY)
-  if server_address_list == []:
+  try:
+    server_address_list = advertise.advertise_lookup(CAN_I_HEAR_KEY)
+  except advertise.AdvertiseError, e:
+    raise CanIHearError("Exception looking up " + CAN_I_HEAR_KEY + ": " +
+        repr(e))
+
+  if not server_address_list:
     raise CanIHearError("Did not find any servers advertising " + 
         CAN_I_HEAR_KEY)
 
-  # Only set up a listening socket if there are servers advertising.
   listen_socket = sockettimeout.timeout_listenforconnection(getmyip(), desired_port)
 
   exceptions_list = []
@@ -509,7 +514,8 @@ def get_control_connection_to_server(server_ip, server_port):
       return (sockettimeout.timeout_openconnection(server_ip, server_port, 
           getmyip(), source_port, 5), source_port)
     except (RepyArgumentError, AddressBindingError, DuplicateTupleError, 
-        AlreadyListeningError, CleanupInProgressError, TimeoutError), e:
+        AlreadyListeningError, CleanupInProgressError, TimeoutError, 
+        sockettimeout.SocketTimeoutError), e:
       exceptions_list.append((getruntime(), "Source port: " + 
           str(source_port), repr(e)))
       continue
@@ -650,7 +656,7 @@ if callfunc == "initialize":
     success, ip, port_remapped = check_random_port()
     log("I could " + "not" * (not success) + " hear on a random port." + 
         "My local/external IPs are " + getmyip() + "/" + ip + 
-        ", and my outgoing port was " + "not" * (not port_remapped) + " remapped.\n")
+        ", and my outgoing port was " + "not " * (not port_remapped) + "remapped.\n")
     exitall()
   except ValueError:
     # There is a callarg, but it's not castable -- 
